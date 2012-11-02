@@ -1,20 +1,19 @@
 (ns droplet.examples
-  (:use droplet.lattice
-        droplet.fixpoint
-        clojure.test))
+  (:use clojure.test)
+  (:require droplet.lattice
+            droplet.lattice.set
+            droplet.instant))
 
 (defn connected-to [x]
-  (-> {:edge #{[1 2] [2 3] [3 3] [4 5] [5 4]}}
-      (fixpoint [(->Join (->Set) :path (query [edge] edge))
-                 (->Join (->Set) :path (query [edge path]
-                                              (set (for [[a b] edge
-                                                         [b' c] path
-                                                         :when (= b b')]
-                                                     [a c]))))])
-      ((query [path]
-              (set (for [[a b] path
-                         :when (= x b)]
-                     a))))))
+  (-> {'edge (droplet.lattice/->Set #{[1 2] [2 3] [3 3] [4 5] [5 4]})
+       'path (droplet.lattice/->Set #{})}
+      (droplet.instant/fixpoint [(droplet.lattice.set/rule edge [?a ?b]
+                                                           (conj path [a b])
+                                                           path [?b ?c]
+                                                           (conj path [a c]))])
+      ((droplet.lattice.set/query result
+                                  path [?a x]
+                                  (conj result a)))))
 
 (deftest connected-to-test
   (is (= #{} (connected-to 1)))
