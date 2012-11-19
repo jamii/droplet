@@ -7,7 +7,7 @@
            strucjure.util))
 
 ;; overview:
-;;   states :: {symbol lattice-element}
+;;   states :: {name lattice-element}
 
 ;; correctness/lint:
 ;;   should have exactly one inductive sink per state
@@ -80,7 +80,7 @@
 
 ;; --- STATES ---
 
-;; states is {symbol lattice-element}
+;; states is {name lattice-element}
 
 ;; --- RULES ---
 
@@ -132,11 +132,11 @@
 
 ;; --- COMMON RULES ---
 
-(defn persistent [sym]
-  (induct sym [sym] identity))
+(defn persistent [name]
+  (induct name [name] identity))
 
-(defn ephemeral [sym]
-  (induct sym [sym] bottom))
+(defn ephemeral [name]
+  (induct name [name] bottom))
 
 ;; --- TOP LEVEL ---
 
@@ -148,25 +148,25 @@
         inductive-rules (filter #(= :induct (:action %)) rules)]
     (agent (->Droplet states [deductive-rules] inductive-rules))))
 
-(defn insert [droplet symbol value]
+(defn insert [droplet name value]
   (-> droplet
-      (update-in [:states symbol] conj value)
+      (update-in [:states name] conj value)
       (update-in [:states] quiscience (:deductive-rules-strata droplet) (:inductive-rules droplet))))
 
-(defn insert! [reactive symbol value]
-  (send reactive insert symbol value))
+(defn insert! [reactive name value]
+  (send reactive insert name value))
 
 ;; --- TESTS ---
 
 ;; deductive tests
 
 (def path-states
-  {'edge #{[1 2] [2 3] [3 3] [4 5] [5 4]}
-   'path #{}})
+  {:edge #{[1 2] [2 3] [3 3] [4 5] [5 4]}
+   :path #{}})
 
 (def path-rules
-  [(deduct 'path ['edge] identity)
-   (deduct 'path ['path 'edge]
+  [(deduct :path [:edge] identity)
+   (deduct :path [:path :edge]
            (fn [path edge]
              (set (for [[a b] path
                         [b' c] edge
@@ -175,14 +175,14 @@
 
 (deftest path-test
   (is (= #{[1 2] [1 3] [2 3] [3 3] [4 4] [5 4] [4 5] [5 5]}
-         (get (fixpoint path-states path-rules) 'path))))
+         (get (fixpoint path-states path-rules) :path))))
 
 ;; inductive tests
 
 (def growth-states path-states)
 
 (def deductive-growth-rules
-  [(deduct 'path ['edge]
+  [(deduct :path [:edge]
            (fn [edge]
              (set (for [[a b] edge
                         [b' c] edge
@@ -190,12 +190,12 @@
                     [a c]))))])
 
 (def inductive-growth-rules
-  [(ephemeral 'path)
-   (induct 'edge ['path 'edge] join)])
+  [(ephemeral :path)
+   (induct :edge [:path :edge] join)])
 
 (deftest growth-test
   (is (= #{[1 2] [1 3] [2 3] [3 3] [4 4] [5 4] [4 5] [5 5]}
-         (get (quiscience growth-states [deductive-growth-rules] inductive-growth-rules) 'edge))))
+         (get (quiscience growth-states [deductive-growth-rules] inductive-growth-rules) :edge))))
 
 ;; nosql tests
 
@@ -215,13 +215,13 @@
      :else (->Causal (join (:vc this) (:vc that)) (join (:val this) (:val that))))))
 
 (def nosql-states
-  {'puts #{}
-   'store {}}) ; {key (->Causal vc val)}
+  {:puts #{}
+   :store {}}) ; {key (->Causal vc val)}
 
 (def nosql-rules
-  [(ephemeral 'puts)
-   (persistent 'store)
-   (deduct 'store ['puts]
+  [(ephemeral :puts)
+   (persistent :store)
+   (deduct :store [:puts]
            (fn [puts]
              (into {}
                    (for [{:keys [key vc val]} puts]
@@ -231,11 +231,11 @@
   (reactive nosql-states nosql-rules))
 
 (defn put! [nosql key vc val]
-  (insert! nosql 'puts {:key key :vc vc :val val}))
+  (insert! nosql :puts {:key key :vc vc :val val}))
 
 (defn is! [nosql key vc val]
   (if (await-for 1000 nosql)
-    (is (= (->Causal vc val) (get-in @nosql [:states 'store key])))
+    (is (= (->Causal vc val) (get-in @nosql [:states :store key])))
     (throw (agent-error nosql))))
 
 (deftest nosql-serial-test
