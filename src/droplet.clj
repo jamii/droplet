@@ -17,66 +17,70 @@
 ;; confluence/monotonicity:
 
 ;; TODO
-;; switch to record/protocol with no inner state
 ;; put rules in states?
-;; make bottom/1 part of lattice interface?
 
 ;; --- LATTICES ---
 
 (defprotocol SemiLattice
-  (lte? [this elem-a elemb] "Less-than, the lattice relation")
-  (join [this elem-a elem-b] "Find the least upper bound of two lattice elements"))
+  (bottom [this] "Return the least element of the lattice")
+  (lte? [this that] "Less-than, the lattice relation")
+  (join [this that] "Find the least upper bound of two lattice elements"))
 
-(defmacro defjoin [name args join-form lt-form]
-  (let [elem-a (gensym "elem-a")
-        elem-b (gensym "elem-b")]
-    `(defrecord ~name ~args
-       ~'SemiLattice
-       (~'lte? [~'_ ~elem-a ~elem-b]
-         ~(if (nil? lt-form)
-            `(= ~elem-b (~join-form ~@args ~elem-a ~elem-b))
-            `(~lt-form ~@args ~elem-a ~elem-b)))
-       (~'join [~'_ ~elem-a ~elem-b]
-         (~join-form ~@args ~elem-a ~elem-b)))))
+(defn lt? [this that]
+  (and (not= this that)
+       (lte? this that)))
 
-(defn lt? [lattice elem-a elem-b]
-  (and (not= elem-a elem-b)
-       (lte? lattice elem-a elem-b)))
+(defrecord Min [val])
+(defrecord Max [val])
 
-(defjoin Or [] or nil)
-(defjoin And [] and nil)
-(defjoin Max [] max <=)
-(defjoin Min [] min >=)
-(defjoin Set [] clojure.set/union clojure.set/subset?)
+(extend-protocol SemiLattice
 
-(defn join-map [val-lattice map-a map-b]
-  (merge-with (partial join val-lattice) map-a map-b))
+  java.lang.Boolean
+  (bottom [this]
+    false)
+  (lte? [this that]
+    (or (false? this)
+        (true? that)))
+  (join [this that]
+    (or this that))
 
-(defn lte-map? [val-lattice map-a map-b]
-  (every? (fn [[key val-a]]
-            (and (contains? map-b key)
-                 (lte? val-lattice val-a (get map-b key))))
-          map-a))
+  Min
+  (bottom [this]
+    (->Min Double/POSITIVE_INFINITY))
+  (lte? [this that]
+    (>= (:val this) (:val that)))
+  (join [this that]
+    (->Min (min (:val this) (:val that))))
 
-(defjoin Map [val-lattice] join-map lte-map?)
+  Max
+  (bottom [this]
+    (->Max Double/NEGATIVE_INFINITY))
+  (lte? [this that]
+    (<= (:val this) (:val that)))
+  (join [this that]
+    (->Max (max (:val this) (:val that))))
 
-(defn join-pair [fst-lattice snd-lattice [fst-a snd-a :as elem-a] [fst-b snd-b :as elem-b]]
-  (cond
-   (lt? fst-lattice fst-a fst-b) elem-b
-   (lt? fst-lattice fst-b fst-a) elem-a
-   :else [(join fst-lattice fst-a fst-b)
-          (join snd-lattice snd-a snd-b)]))
+  clojure.lang.APersistentSet
+  (bottom [this]
+    #{})
+  (lte? [this that]
+    (clojure.set/subset? this that))
+  (join [this that]
+    (clojure.set/union this that))
 
-(defn lte-pair?  [fst-lattice snd-lattice [fst-a snd-a :as elem-a] [fst-b snd-b :as elem-b]]
-  (or (lte? fst-lattice fst-a fst-b)
-      (and (= fst-a fst-b)
-           (lte? snd-lattice snd-a snd-b))))
-
-(defjoin Pair [fst-lattice snd-lattice] join-pair lte-pair?)
+  clojure.lang.APersistentMap
+  (bottom [this]
+    {})
+  (lte? [this that]
+    (every? (fn [[key val]]
+              (lte? val (get that key (bottom val))))
+            this))
+  (join [this that]
+    (merge-with join this that)))
 
 ;; --- STATES ---
 
-;; states is {symbol {:lattice lattice :element element}}
+;; states is {symbol lattice-element}
 
 ;; --- RULES ---
 
@@ -89,11 +93,9 @@
 
 (defn deductions [states deductive-rule]
   (assert (= :deduct (:action deductive-rule)))
-  (let [elements (map #(:element (get states %)) (:sources deductive-rule))
+  (let [elements (map #(get states %) (:sources deductive-rule))
         new-element (apply (:fun deductive-rule) elements)]
-    (let [sink (:sink deductive-rule)]
-      (let [{:keys [lattice element]} (get states sink)]
-        (assoc-in states [sink :element] (join lattice element new-element))))))
+    (update-in states [(:sink deductive-rule)] join new-element)))
 
 (defn deductive-step [states deductive-rules]
   (reduce deductions states deductive-rules))
@@ -114,12 +116,9 @@
 
 (defn inductions [states new-states inductive-rule]
   (assert (= :induct (:action inductive-rule)))
-  (let [elements (map #(:element (get states %)) (:sources inductive-rule))
+  (let [elements (map #(get states %) (:sources inductive-rule))
         new-element (apply (:fun inductive-rule) elements)]
-    (let [sink (:sink inductive-rule)]
-      (let [{:keys [lattice element]} (get states sink)]
-        (assoc new-states sink {:lattice lattice
-                                :element (join lattice element new-element)})))))
+    (assoc new-states (:sink inductive-rule) new-element)))
 
 (defn inductive-step [states deductive-rules-strata inductive-rules]
   (let [fixed-states (apply fixpoint states deductive-rules-strata)]
@@ -136,8 +135,8 @@
 (defn persistent [sym]
   (induct sym [sym] identity))
 
-(defn ephemeral [sym empty]
-  (induct sym [sym] (constantly empty)))
+(defn ephemeral [sym]
+  (induct sym [sym] bottom))
 
 ;; --- TOP LEVEL ---
 
@@ -151,7 +150,7 @@
 
 (defn insert [droplet symbol value]
   (-> droplet
-      (update-in [:states symbol :element] conj value)
+      (update-in [:states symbol] conj value)
       (update-in [:states] quiscience (:deductive-rules-strata droplet) (:inductive-rules droplet))))
 
 (defn insert! [reactive symbol value]
@@ -162,8 +161,8 @@
 ;; deductive tests
 
 (def path-states
-  {'edge {:lattice (->Set) :element #{[1 2] [2 3] [3 3] [4 5] [5 4]}}
-   'path {:lattice (->Set) :element #{}}})
+  {'edge #{[1 2] [2 3] [3 3] [4 5] [5 4]}
+   'path #{}})
 
 (def path-rules
   [(deduct 'path ['edge] identity)
@@ -176,7 +175,7 @@
 
 (deftest path-test
   (is (= #{[1 2] [1 3] [2 3] [3 3] [4 4] [5 4] [4 5] [5 5]}
-         (get-in (fixpoint path-states path-rules) ['path :element]))))
+         (get (fixpoint path-states path-rules) 'path))))
 
 ;; inductive tests
 
@@ -191,33 +190,42 @@
                     [a c]))))])
 
 (def inductive-growth-rules
-  [(ephemeral 'path #{})
-   (induct 'edge ['path] identity)])
+  [(ephemeral 'path)
+   (induct 'edge ['path 'edge] join)])
 
 (deftest growth-test
   (is (= #{[1 2] [1 3] [2 3] [3 3] [4 4] [5 4] [4 5] [5 5]}
-         (get-in (quiscience growth-states [deductive-growth-rules] inductive-growth-rules) ['edge :element]))))
+         (get (quiscience growth-states [deductive-growth-rules] inductive-growth-rules) 'edge))))
 
 ;; nosql tests
 
-(def vc-lattice
-  (->Map (->Max)))
-
-(def nosql-lattice
-  (->Map (->Pair vc-lattice (->Max))))
+;; like lpair in Bloom^L
+;; not truly a lattice - join is not unique
+;; vc is {node-id Max}
+(defrecord Causal [vc val]
+  SemiLattice
+  (bottom [this]
+    (->Causal {} nil))
+  (lte? [this that]
+    (lte? (:vc this) (:vc that)))
+  (join [this that]
+    (cond
+     (lt? (:vc this) (:vc that)) that
+     (lt? (:vc that) (:vc this)) this
+     :else (->Causal (join (:vc this) (:vc that)) (join (:val this) (:val that))))))
 
 (def nosql-states
-  {'puts {:lattice (->Set) :element #{}}
-   'store {:lattice nosql-lattice :element {}}})
+  {'puts #{}
+   'store {}}) ; {key (->Causal vc val)}
 
 (def nosql-rules
-  [(ephemeral 'puts #{})
+  [(ephemeral 'puts)
    (persistent 'store)
    (deduct 'store ['puts]
            (fn [puts]
              (into {}
                    (for [{:keys [key vc val]} puts]
-                     [key [vc val]]))))])
+                     [key (->Causal vc val)]))))])
 
 (defn new-nosql []
   (reactive nosql-states nosql-rules))
@@ -227,30 +235,30 @@
 
 (defn is! [nosql key vc val]
   (if (await-for 1000 nosql)
-    (is (= [vc val] (get-in @nosql [:states 'store :element key])))
+    (is (= (->Causal vc val) (get-in @nosql [:states 'store key])))
     (throw (agent-error nosql))))
 
 (deftest nosql-serial-test
   (doto (new-nosql)
-    (put! :x {:alice 1} 10)
-    (is! :x {:alice 1} 10)
-    (put! :y {:alice 2} 20)
-    (is! :y {:alice 2} 20)
-    (put! :x {:alice 3} 5)
-    (is! :x {:alice 3} 5)))
+    (put! :x {:alice (->Max 1)} (->Max 10))
+    (is! :x {:alice (->Max 1)} (->Max 10))
+    (put! :y {:alice (->Max 2)} (->Max 20))
+    (is! :y {:alice (->Max 2)} (->Max 20))
+    (put! :x {:alice (->Max 3)} (->Max 5))
+    (is! :x {:alice (->Max 3)} (->Max 5))))
 
 (deftest nosql-merge-test
   (doto (new-nosql)
-    (put! :x {:alice 1} 10)
-    (put! :x {:alice 1 :bob 1} 20)
-    (put! :x {:alice 1 :charlie 1} 15)
+    (put! :x {:alice (->Max 1)} (->Max 10))
+    (put! :x {:alice (->Max 1) :bob (->Max 1)} (->Max 20))
+    (put! :x {:alice (->Max 1) :charlie (->Max 1)} (->Max 15))
     ;; no causal relation - max value wins
-    (is! :x {:alice 1 :bob 1} 20)))
+    (is! :x {:alice (->Max 1) :bob (->Max 1) :charlie (->Max 1)} (->Max 20))))
 
 (deftest nosql-causal-test
   (doto (new-nosql)
-    (put! :x {:alice 1} 10)
-    (put! :x {:alice 1 :bob 1} 20)
-    (put! :x {:alice 1 :bob 1 :charlie 1} 15)
+    (put! :x {:alice (->Max 1)} (->Max 10))
+    (put! :x {:alice (->Max 1) :bob (->Max 1)} (->Max 20))
+    (put! :x {:alice (->Max 1) :bob (->Max 1) :charlie (->Max 1)} (->Max 15))
     ;; causally ordered - last write wins
-    (is! :x {:alice 1 :bob 1 :charlie 1} 15)))
+    (is! :x {:alice (->Max 1) :bob (->Max 1) :charlie (->Max 1)} (->Max 15))))
