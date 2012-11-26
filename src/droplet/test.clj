@@ -1,6 +1,7 @@
 (ns droplet.test
   (use clojure.test
-       droplet))
+       droplet)
+  (require [droplet.datalog :as d]))
 
 ;; --- CORE --
 
@@ -11,13 +12,11 @@
    :path #{}})
 
 (def path-rules
-  [(deduct :path [:edge] :edge)
-   (deduct :path [:path :edge]
-           (fn [{:keys [path edge]}]
-             (set (for [[a b] path
-                        [b' c] edge
-                        :when (= b b')]
-                    [a c]))))])
+  [(d/deduct :path [a b]
+             :edge [?a ?b])
+   (d/deduct :path [a c]
+             :edge [?a ?b]
+             :path [?b ?c])])
 
 (deftest path-test
   (is (= #{[1 2] [1 3] [2 3] [3 3] [4 4] [5 4] [4 5] [5 5]}
@@ -28,18 +27,16 @@
 (def growth-states path-states)
 
 (def deductive-growth-rules
-  [(deduct :path [:edge]
-           (fn [{:keys [edge]}]
-             (set (for [[a b] edge
-                        [b' c] edge
-                        :when (= b b')]
-                    [a c]))))])
+  [(d/deduct :path [a b]
+             :edge [?a ?b])
+   (d/deduct :path [a c]
+             :edge [?a ?b]
+             :edge [?b ?c])])
 
 (def inductive-growth-rules
   [(ephemeral :path)
-   (induct :edge [:path :edge]
-           (fn [{:keys [path edge]}]
-             (join path edge)))])
+   (d/induct :edge [a b]
+             :path [?a ?b])])
 
 (deftest growth-test
   (is (= #{[1 2] [1 3] [2 3] [3 3] [4 4] [5 4] [4 5] [5 5]}
@@ -69,11 +66,9 @@
 (def nosql-rules
   [(ephemeral :puts)
    (persistent :store)
-   (deduct :store [:puts]
-           (fn [{:keys [puts]}]
-             (into {}
-                   (for [{:keys [key vc val]} puts]
-                     [key (->Causal vc val)]))))])
+   (d/rule :deduct #(into {} %)
+           :store [key (->Causal vc val)]
+           :puts {:key ?key :vc ?vc :val ?val})])
 
 (defn new-nosql []
   (reactive nosql-states nosql-rules))
