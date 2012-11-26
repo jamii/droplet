@@ -44,9 +44,14 @@
 
 ;; nosql tests
 
+;; vector-clock is a {node-id Max} lattice
+(defn vc [& elems]
+  (into {}
+        (for [[node-id clock] (partition 2 elems)]
+          [node-id (->Max clock)])))
+
 ;; like lpair in Bloom^L
 ;; not truly a lattice - join is not unique
-;; vc is {node-id Max}
 (defrecord Causal [vc val]
   SemiLattice
   (bottom [this]
@@ -83,25 +88,25 @@
 
 (deftest nosql-serial-test
   (doto (new-nosql)
-    (put! :x {:alice (->Max 1)} (->Max 10))
-    (is! :x {:alice (->Max 1)} (->Max 10))
-    (put! :y {:alice (->Max 2)} (->Max 20))
-    (is! :y {:alice (->Max 2)} (->Max 20))
-    (put! :x {:alice (->Max 3)} (->Max 5))
-    (is! :x {:alice (->Max 3)} (->Max 5))))
+    (put! :x (vc :alice 1) (->Max 10))
+    (is! :x (vc :alice 1) (->Max 10))
+    (put! :y (vc :alice 2) (->Max 20))
+    (is! :y (vc :alice 2) (->Max 20))
+    (put! :x (vc :alice 3) (->Max 5))
+    (is! :x (vc :alice 3) (->Max 5))))
 
 (deftest nosql-merge-test
   (doto (new-nosql)
-    (put! :x {:alice (->Max 1)} (->Max 10))
-    (put! :x {:alice (->Max 1) :bob (->Max 1)} (->Max 20))
-    (put! :x {:alice (->Max 1) :charlie (->Max 1)} (->Max 15))
+    (put! :x (vc :alice 1) (->Max 10))
+    (put! :x (vc :alice 1 :bob 1) (->Max 20))
+    (put! :x (vc :alice 1 :charlie 1) (->Max 15))
     ;; no causal relation - max value wins
-    (is! :x {:alice (->Max 1) :bob (->Max 1) :charlie (->Max 1)} (->Max 20))))
+    (is! :x (vc :alice 1 :bob 1 :charlie 1) (->Max 20))))
 
 (deftest nosql-causal-test
   (doto (new-nosql)
-    (put! :x {:alice (->Max 1)} (->Max 10))
-    (put! :x {:alice (->Max 1) :bob (->Max 1)} (->Max 20))
-    (put! :x {:alice (->Max 1) :bob (->Max 1) :charlie (->Max 1)} (->Max 15))
+    (put! :x (vc :alice 1) (->Max 10))
+    (put! :x (vc :alice 1 :bob 1) (->Max 20))
+    (put! :x (vc :alice 1 :bob 1 :charlie 1) (->Max 15))
     ;; causally ordered - last write wins
-    (is! :x {:alice (->Max 1) :bob (->Max 1) :charlie (->Max 1)} (->Max 15))))
+    (is! :x (vc :alice 1 :bob 1 :charlie 1) (->Max 15))))
