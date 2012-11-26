@@ -71,9 +71,8 @@
 (def nosql-rules
   [(ephemeral :puts)
    (persistent :store)
-   (d/rule :deduct #(into {} %)
-           :store [key (->Causal vc val)]
-           :puts {:key ?key :vc ?vc :val ?val})])
+   (d/deduct :store [key (->Causal vc val)]
+             :puts {:key ?key :vc ?vc :val ?val})])
 
 (defn new-nosql []
   (reactive nosql-states nosql-rules))

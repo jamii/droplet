@@ -31,38 +31,37 @@
           :when (nil? rest)]
       new-bindings)))
 
-(defrecord Query [agg-fn out-fn clauses]
+(defrecord Query [out-fn clauses]
   strucjure.pattern.AST
   (with-scope [this scope]
     (let [[new-clauses new-scope] (strucjure.pattern/chain-scope identity clauses scope)] ; so ugly :'(
-      [`(->Query ~agg-fn ~(strucjure.util/src-with-scope out-fn new-scope) ~new-clauses) new-scope]))
+      [`(->Query ~(strucjure.util/src-with-scope out-fn new-scope) ~new-clauses) new-scope]))
   clojure.lang.IFn
   (invoke [this states]
-    (agg-fn
-     (for [bindings (reduce #(run %2 states %1) [{}] clauses)]
-       (out-fn nil bindings)))))
+    (for [bindings (reduce #(run %2 states %1) [{}] clauses)]
+      (out-fn nil bindings))))
 
 (strucjure/defview parse-clause
   (prefix (and keyword? ?name) ?pattern)
   (->Project name (strucjure/run strucjure.parser/parse-pattern-ast pattern)))
 
-(strucjure/defnview parse-query [agg-fn]
+(strucjure/defview parse-query
   [?out-fn & ((strucjure/zero-or-more-prefix parse-clause) ?clauses)]
-  (->Query agg-fn out-fn clauses))
+  (->Query out-fn clauses))
 
-(defmacro query [agg-fn & forms]
-  (let [query-ast (strucjure/run (parse-query agg-fn) forms)
+(defmacro query [& forms]
+  (let [query-ast (strucjure/run parse-query forms)
         [query _] (strucjure.pattern/with-scope query-ast #{})]
     query))
 
-(defmacro rule [action agg-fn sink & forms]
-  (let [query-ast (strucjure/run (parse-query agg-fn) forms)
+(defmacro rule [action sink & forms]
+  (let [query-ast (strucjure/run parse-query forms)
         sources (set (map source (:clauses query-ast)))
         [query _] (strucjure.pattern/with-scope query-ast #{})]
     `(droplet/->Rule ~action ~sink ~sources ~query)))
 
 (defmacro deduct [sink & forms]
-  `(rule :deduct set ~sink ~@forms))
+  `(rule :deduct ~sink ~@forms))
 
 (defmacro induct [sink & forms]
-  `(rule :induct set ~sink ~@forms))
+  `(rule :induct ~sink ~@forms))

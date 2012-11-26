@@ -61,7 +61,9 @@
   (lte? [this that]
     (clojure.set/subset? this that))
   (join [this that]
-    (clojure.set/union this that))
+    (cond
+     (seq? that) (into this that)
+     (set? that) (clojure.set/union this that)))
 
   clojure.lang.APersistentMap
   (bottom [this]
@@ -71,7 +73,9 @@
               (lte? val (get that key (bottom val))))
             this))
   (join [this that]
-    (merge-with join this that)))
+    (cond
+     (seq? that) (merge-with join this (into {} that))
+     (map? that) (merge-with join this that))))
 
 ;; --- STATES ---
 
@@ -81,16 +85,19 @@
 
 (defrecord Rule [action sink sources fun]) ; action is either :deduct or :induct
 
+(defn productions [old-states new-states rule]
+  (let [sources (select-keys old-states (:sources rule))
+        sink ((:fun rule) sources)]
+    (update-in new-states [(:sink rule)] join sink)))
+
 ;; --- DEDUCTIVE ---
 
 (defn deduct [sink sources fun]
   (->Rule :deduct sink sources fun))
 
-(defn deductions [states deductive-rule]
-  (assert (= :deduct (:action deductive-rule)))
-  (let [sources (select-keys states (:sources deductive-rule))
-        sink ((:fun deductive-rule) sources)]
-    (update-in states [(:sink deductive-rule)] join sink)))
+(defn deductions [states rule]
+  (assert (= :deduct (:action rule)))
+  (productions states states rule))
 
 (defn deductive-step [states deductive-rules]
   (reduce deductions states deductive-rules))
@@ -109,15 +116,14 @@
 (defn induct [sink sources fun]
   (->Rule :induct sink sources fun))
 
-(defn inductions [states new-states inductive-rule]
-  (assert (= :induct (:action inductive-rule)))
-  (let [sources (select-keys states (:sources inductive-rule))
-        sink ((:fun inductive-rule) sources)]
-    (assoc new-states (:sink inductive-rule) sink)))
+(defn inductions [old-states new-states rule]
+  (assert (= :induct (:action rule)))
+  (productions old-states new-states rule))
 
 (defn inductive-step [states deductive-rules-strata inductive-rules]
-  (let [fixed-states (apply fixpoint states deductive-rules-strata)]
-    (reduce (partial inductions fixed-states) {} inductive-rules)))
+  (let [fixed-states (apply fixpoint states deductive-rules-strata)
+        new-states (into {} (for [[name state] states] [name (bottom state)]))]
+    (reduce (partial inductions fixed-states) new-states inductive-rules)))
 
 (defn quiscience [states deductive-rules-strata inductive-rules]
   (let [new-states (inductive-step states deductive-rules-strata inductive-rules)]
