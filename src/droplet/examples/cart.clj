@@ -1,7 +1,9 @@
 ;; Example implementation of distributed shopping cart
 (ns droplet.examples.cart
-  (require clojure.set)
-  (use droplet))
+  (require clojure.set
+           [droplet.datalog :as d])
+  (use clojure.test
+       droplet))
 
 (def ACTION_OP 0)
 (def CHECKOUT_OP 1)
@@ -42,16 +44,10 @@
   [(persistent :sessions)
    (ephemeral :add)
    (ephemeral :checkout)
-   (deduct :sessions [:add]
-      (fn [adding]
-        (into {}
-          (for [{:keys [userid opid item cnt]} adding]
-                    [userid (->CartLattice {opid #{[ACTION_OP item cnt]}})]))))
-   (deduct :sessions [:checkout]
-      (fn [checkout]
-       (into {}
-          (for [{:keys [userid opid from-op]} checkout]
-                    [userid (->CartLattice {opid #{[CHECKOUT_OP from-op]}})]))))])
+   (d/deduct :sessions [userid (->CartLattice {opid #{[ACTION_OP item cnt]}})]
+             :add {:userid ?userid :opid ?opid :item ?item :cnt ?cnt})
+   (d/deduct :sessions [userid (->CartLattice {opid #{[CHECKOUT_OP from-op]}})]
+             :checkout {:userid ?userid :opid ?opid :from-op ?from-op})])
 
 (defn add-to-cart! [carts userid opid item cnt]
   (insert! carts :add {:userid userid :opid opid :item item :cnt cnt}))
@@ -62,17 +58,22 @@
   (if (await-for 1000 carts)
     (cart-summary (get-in @carts [:states :sessions]) userid from-op opid)))
 
-  ;   (get-in @carts [:sessions userid :checkouts])
-  ;   (throw (agent-error carts))))
-
 (defn make-carts []
   (reactive cart-states cart-rules))
 
-(def c (make-carts))
-(add-to-cart! c 999 1 "beer" 5)
-(add-to-cart! c 999 2 "gin" 3)
-(add-to-cart! c 999 3 "absinthe" 9)
-(add-to-cart! c 999 4 "beer" 1)
-(add-to-cart! c 111 5 "cookies" 17)
-(checkout! c 999 5 1)
-(:sessions (:states @c))
+(deftest basic-cart-test
+  (let [c (make-carts)]
+    (add-to-cart! c 999 1 "beer" 5)
+    (add-to-cart! c 999 2 "gin" 3)
+    (add-to-cart! c 999 3 "absinthe" 9)
+    (add-to-cart! c 999 4 "beer" 1)
+    (add-to-cart! c 111 5 "cookies" 17)
+    (let [result (checkout! c 999 5 1)]
+      (if-not (= (get result "beer") 6)
+        (throw (agent-error c)))
+      (if-not (= (get result "gin") 3)
+        (throw (agent-error c)))
+      (if-not (= (get result "absinthe") 9)
+        (throw (agent-error c))))))
+
+; (:sessions (:states @c))
