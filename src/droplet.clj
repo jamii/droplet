@@ -21,6 +21,7 @@
   (lte? [this that] "Less-than, the lattice relation")
   (join [this that] "Find the least upper bound of two lattice elements"))
 
+;; Checks for equality and if not equal returns lte?
 (defn lt? [this that]
   (and (not= this that)
        (lte? this that)))
@@ -92,16 +93,25 @@
 
 ;; --- DEDUCTIVE ---
 
+;; Generate a deductive rule w/ the given sink sources and function
 (defn deduct [sink sources fun]
   (->Rule :deduct sink sources fun))
 
+;; TODO update
+;; Given a deductive rule and a map of states,
+;;  Get every state for each source in the rule (elements)
+;;  Apply the deductive rule's function to each state
+;;  Update the states map's sink state by joining the new states that were generated
 (defn deductions [states rule]
   (assert (= :deduct (:action rule)))
   (productions states states rule))
 
+;; Calls deductions with the current states list, and deduces through all the given rules
 (defn deductive-step [states deductive-rules]
   (reduce deductions states deductive-rules))
 
+;; Calls deductive-step with the states map and rules, until deductive-step no longer generates new states
+;; If called with strata, run fixpoint on state and each item in (cons deductive-rules deductive-rules-strata)
 (defn fixpoint
   ([states deductive-rules]
      (let [new-states (deductive-step states deductive-rules)]
@@ -116,15 +126,25 @@
 (defn induct [sink sources fun]
   (->Rule :induct sink sources fun))
 
+;; TODO update
+;; Given an inductive rule, a set of states, and a set of newly generated states
+;;  Get every state for each source in the rule, and apply the inductive rule function to each state
+;;  Insert each newly generated state in the new-states map w/ the key being the inductive-rule's :sink
 (defn inductions [old-states new-states rule]
   (assert (= :induct (:action rule)))
   (productions old-states new-states rule))
 
+;; Given a map of states, a list of stratified deductive rules, and a list of inductive rules
+;;  Generate the fixpoint from executing all the deductive rules
+;;  Call inductions for each inductive rule, given the set of fixed states from the deductive step.
+;;  Collect and return the result of the inductive rules
 (defn inductive-step [states deductive-rules-strata inductive-rules]
   (let [fixed-states (apply fixpoint states deductive-rules-strata)
         new-states (into {} (for [[name state] states] [name (bottom state)]))]
     (reduce (partial inductions fixed-states) new-states inductive-rules)))
 
+;; Given a list of states, deductive rules, and inductive rules
+;;  Recursively call inductive-step until no more new states are generated
 (defn quiscience [states deductive-rules-strata inductive-rules]
   (let [new-states (inductive-step states deductive-rules-strata inductive-rules)]
     (if (= states new-states)
