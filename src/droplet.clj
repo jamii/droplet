@@ -153,9 +153,14 @@
 
 ;; --- COMMON RULES ---
 
+;; Deductive rule that just returns the object itself
+;;  Will make a lattice persist across timesteps
 (defn persistent [name]
   (induct name [name] (fn [states] (get states name))))
 
+;; Inductive rule that returns the bottom of a lattice
+;; Marks a table as ephemeral---that is, at each inductive step
+;;  it'll start with the bottom value for that lattice
 (defn ephemeral [name]
   (induct name [name] (fn [states] (bottom (get states name)))))
 
