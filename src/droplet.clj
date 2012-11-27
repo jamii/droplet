@@ -86,6 +86,8 @@
 
 (defrecord Rule [action sink sources fun]) ; action is either :deduct or :induct
 
+;; Take a list of old states and a rule, apply the rule's function to
+;;  the sources, and put the derived states in the returned new-states.
 (defn productions [old-states new-states rule]
   (let [sources (select-keys old-states (:sources rule))
         sink ((:fun rule) sources)]
@@ -97,11 +99,8 @@
 (defn deduct [sink sources fun]
   (->Rule :deduct sink sources fun))
 
-;; TODO update
-;; Given a deductive rule and a map of states,
-;;  Get every state for each source in the rule (elements)
-;;  Apply the deductive rule's function to each state
-;;  Update the states map's sink state by joining the new states that were generated
+;; Given a deductive rule and a map of states, update
+;;  the map with the result of applying the rules
 (defn deductions [states rule]
   (assert (= :deduct (:action rule)))
   (productions states states rule))
@@ -126,10 +125,8 @@
 (defn induct [sink sources fun]
   (->Rule :induct sink sources fun))
 
-;; TODO update
 ;; Given an inductive rule, a set of states, and a set of newly generated states
-;;  Get every state for each source in the rule, and apply the inductive rule function to each state
-;;  Insert each newly generated state in the new-states map w/ the key being the inductive-rule's :sink
+;;   Apply the rule to the old states, saving the generated states in the new-states map
 (defn inductions [old-states new-states rule]
   (assert (= :induct (:action rule)))
   (productions old-states new-states rule))
