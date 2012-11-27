@@ -172,7 +172,9 @@
   (let [rules (flatten rules)
         deductive-rules (filter #(= :deduct (:action %)) rules)
         inductive-rules (filter #(= :induct (:action %)) rules)]
-    (agent (->Droplet states [deductive-rules] inductive-rules))))
+    (let [a (agent (->Droplet states [deductive-rules] inductive-rules))]
+      (set-error-handler! a #(prn "Agent exception: " %1 %2))
+      a)))
 
 (defn insert [droplet name value]
   (-> droplet
