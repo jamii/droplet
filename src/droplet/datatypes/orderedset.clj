@@ -55,6 +55,55 @@
                    (recur (subvec patha 1) (subvec pathb 1))) ;; Normal case
         :else    (< l r)))))
 
+(defn path-len
+  "Returns the path length for this path, which is usually the number of pairs
+   except for the root which has a pair but no branch"
+  [path]
+  (if (and (= 1 (count path)) (nil? (:branch (first path))))
+    0
+    (count path)))
+
+(defn ancestor?
+  "Returns if the first path is an ancestor to the second"
+  [patha pathb]
+  (if-not (>= (path-len patha) (path-len pathb)) ;; If path A is longer or equal, no way it can be an ancestor
+    (loop [patha patha                     ;; Otherwise, determine if it's an ancestor
+           pathb pathb]
+      (let [{l :branch l-disamb :disamb} (first patha)
+            {r :branch r-disamb :disamb} (first pathb)]
+        (cond
+          (nil? l) true
+          (= l r)  (recur (subvec patha 1) (subvec pathb 1)) ;; Normal case, equal so continue down the tree
+          :else    nil)))))
+
+(defn mini-sibling?
+  "Returns true if the two paths are mini-siblings of each other,
+   that is, they have the same path but differ in disambiguators"
+   [patha pathb]
+   (= (for [{branch :branch} patha] branch)
+      (for [{branch :branch} patha] branch)))
+
+(defn new-node
+  "Returns a new node with the given branch
+   and automatically-filled in disambiguator
+
+   TODO use real lamport clock and macaddr for this!"
+   [branch]
+   {:branch branch :disamb {:clock 7 :siteid "MACADDRESS"}})
+
+(defn new-id
+  "Returns a new position id between the two given ids
+
+  There must be no already-existing id between the two paths.
+  They must be adjacent"
+  [{patha :path} {pathb :path}]
+  (prn "Ancestor?" (ancestor? patha pathb))
+  (cond
+    (ancestor? patha pathb) (conj pathb (new-node 0))
+    (ancestor? pathb patha) (conj patha (new-node 1))
+    (mini-sibling? patha pathb) (conj patha (new-node 1))
+    :else (conj patha (new-node 1))))
+
 (defn ordered-set
   []
   (sorted-set-by item<?))
