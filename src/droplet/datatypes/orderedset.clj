@@ -29,7 +29,7 @@
   ))
 
 ;; Compare by path and break ties with disambiguator
-(defn item-comparator
+(defn item<?
   [{patha :path} {pathb :path}]
   (loop [patha patha
          pathb pathb]
@@ -39,41 +39,44 @@
         (nil? l) (= r 1)
         (nil? r) (= l 0)
         (= l r)  (if (and (= 1 (count patha)) (= 1 (count pathb)))
-                  (< l-disamb r-disamb) ;; Finishes with two mini-siblings, order by disambiguator
-                  (recur (subvec patha 1) (subvec pathb 1))) ;; Normal case
+                   (< l-disamb r-disamb) ;; Finishes with two mini-siblings, order by disambiguator
+                   (recur (subvec patha 1) (subvec pathb 1))) ;; Normal case
         :else    (< l r)))))
 
-;; Builds a simple path (that is, no nodes in path are minor nodes)
-;;  Takes a list of branches and a disambiguator
+;; Build a simple path (that is, no nodes in path are minor nodes)
+;;  from a list of branches and a disambiguator
 (defn build-simple-path
   [branches disamb val]
   (let [path (into []
-               (for [x branches] {:branch x}))
-        with-disamb (conj (subvec path 0 (max 0 (- (count path) 1))) (assoc (last path) :disamb disamb))]
-    {:path with-disamb :val val}))
+               (for [x branches] {:branch x}))]
+    {:path (conj (subvec path 0 (max 0 (- (count path) 1)))
+                 (assoc (last path) :disamb disamb))
+     :val val}))
 
 (deftest comparator-test
   ;; Basic tests for non-ambiguous paths
   (let [path (fn [branches]
               (build-simple-path branches "dis" "data"))]
-    (is (item-comparator (path '(0)) (path '())))
-    (is (item-comparator (path '(0)) (path '(1))))
-    (is (item-comparator (path '(0)) (path '(1 0 1))))
-    (is (item-comparator (path '(0)) (path '(1 1 0 1))))
-    (is (item-comparator (path '(0)) (path '(0 1))))
-    (is (item-comparator (path '(0)) (path '(0 1 0 0))))
-    (is (item-comparator (path '(0)) (path '(0 1 1 1))))
-    (is (item-comparator (path '(1 0)) (path '(1 1))))
-    (is (item-comparator (path '(1 0)) (path '(1 0 1))))
-    (is (item-comparator (path '(1 0)) (path '(1 1 1 1))))
-    (is (item-comparator (path '(1 1 0)) (path '(1 1 1))))
-    (is (item-comparator (path '(1 1 0)) (path '(1 1 1 0))))
-    (is (item-comparator (path '(0 0 1)) (path '(0 1))))
-    (is (item-comparator (path '(0 0 1)) (path '(0 1 0))))
-    (is (not (item-comparator (path '(0 0 1)) (path '(0 0)))))
-    (is (not (item-comparator (path '(0 0 1))(path '(0 0 0)))))
-    (is (not (item-comparator (path '(01 1)) (path '(0 0)))))
-    (is (not (item-comparator (path '(1)) (path '()))))
-    (is (not (item-comparator (path '(1 1 0)) (path '(0 1 1)))))
-    (is (not (item-comparator (path '(1 1 0)) (path '(1 0 1)))))
-    (is (not (item-comparator (path '(0 0 1)) (path '(0 0)))))))
+    (is (item<? (path '()) (path '(1))))
+    (is (item<? (path '(0)) (path '())))
+    (is (item<? (path '(0)) (path '(1))))
+    (is (item<? (path '(0)) (path '(1 0 1))))
+    (is (item<? (path '(0)) (path '(1 1 0 1))))
+    (is (item<? (path '(0)) (path '(0 1))))
+    (is (item<? (path '(0)) (path '(0 1 0 0))))
+    (is (item<? (path '(0)) (path '(0 1 1 1))))
+    (is (item<? (path '(1 0)) (path '(1 1))))
+    (is (item<? (path '(1 0)) (path '(1 0 1))))
+    (is (item<? (path '(1 0)) (path '(1 1 1 1))))
+    (is (item<? (path '(1 1 0)) (path '(1 1 1))))
+    (is (item<? (path '(1 1 0)) (path '(1 1 1 0))))
+    (is (item<? (path '(0 0 1)) (path '(0 1))))
+    (is (item<? (path '(0 0 1)) (path '(0 1 0))))
+    (is (not (item<? (path '()) (path '(0)))))
+    (is (not (item<? (path '(0 0 1)) (path '(0 0)))))
+    (is (not (item<? (path '(0 0 1))(path '(0 0 0)))))
+    (is (not (item<? (path '(01 1)) (path '(0 0)))))
+    (is (not (item<? (path '(1)) (path '()))))
+    (is (not (item<? (path '(1 1 0)) (path '(0 1 1)))))
+    (is (not (item<? (path '(1 1 0)) (path '(1 0 1)))))
+    (is (not (item<? (path '(0 0 1)) (path '(0 0)))))))
