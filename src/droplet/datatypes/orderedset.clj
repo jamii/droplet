@@ -29,6 +29,11 @@
   (join [this that]
   ))
 
+(defn set-as-values
+  [oset]
+  (for [{val :val} (seq oset)]
+    val))
+
 (defn disamb<?
   [disamb-a disamb-b]
   (if (not= (:clock disamb-a) (:clock disamb-b))
@@ -110,6 +115,20 @@
   (is (item<? (node '(1 1 0) "a" 0) (node '(1 1 0) "a" 1)))
   (is (not (item<? (node '(0 1) "a" 3) (node '(0 1) "a" 2))))
   (is (not (item<? (node '(1 0 1) "z" 6) (node '(1 0 1) "a" 2)))))
+
+(deftest ancestor-test
+  (is (ancestor? (:path (node '())) (:path (node '(0)))))
+  (is (ancestor? (:path (node '())) (:path (node '(1)))))
+  (is (ancestor? (:path (node '())) (:path (node '(0 1)))))
+  (is (ancestor? (:path (node '())) (:path (node '(1 0)))))
+  (is (ancestor? (:path (node '(0))) (:path (node '(0 1)))))
+  (is (ancestor? (:path (node '(0))) (:path (node '(0 1 1)))))
+  (is (ancestor? (:path (node '(1 0))) (:path (node '(1 0 0 1)))))
+  (is (not (ancestor? (:path (node '(0))) (:path (node '(1))))))
+  (is (not (ancestor? (:path (node '(1))) (:path (node '(0))))))
+  (is (not (ancestor? (:path (node '(1))) (:path (node '())))))
+  (is (not (ancestor? (:path (node '(1))) (:path (node '(0 0 1))))))
+  (is (not (ancestor? (:path (node '(1 0 1))) (:path (node '(0 1 0)))))))
 
 (deftest orderedset-test
   (let [is! (fn [os val]
