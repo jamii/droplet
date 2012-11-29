@@ -17,9 +17,10 @@
 ;; Each item in the ordered set contains a path, which is a list of {:path [{:branch :disamb}] :val val} and the payload value
 ;; A disambiguator for a non-tail node is omitted if the path passes through a major node. It is included if the path
 ;;  goes through a minor node
+;; A disambiguator is a (clock, siteid) pair where clock is a lamport clock, the clock value that a node had when inserting that value
 ; (defrecord SetItem [path val])
 
-(defrecord OrderedSet [oset vc]
+(defrecord OrderedSet [oset clock]
   SemiLattice
   (bottom [this]
   )
@@ -28,7 +29,13 @@
   (join [this that]
   ))
 
-;; Compare by path and break ties with disambiguator
+(defn disamb<?
+  [disamb-a disamb-b]
+  (if (not= (:clock disamb-a) (:clock disamb-b))
+    (< (:clock disamb-a) (:clock disamb-b)) ;; If there is a lamport clock ordering, use that
+    (< (:siteid disamb-a) (:siteid disamb-b)))) ;; else order by MAC address
+
+;; Compare by path and break ties (mini-nodes are siblings in same major node) with disambiguator
 (defn item<?
   [{patha :path} {pathb :path}]
   (loop [patha patha
@@ -39,7 +46,7 @@
         (nil? l) (= r 1)
         (nil? r) (= l 0)
         (= l r)  (if (and (= 1 (count patha)) (= 1 (count pathb)))
-                   (< l-disamb r-disamb) ;; Finishes with two mini-siblings, order by disambiguator
+                   (disamb<? l-disamb r-disamb) ;; Finishes with two mini-siblings, order by disambiguator
                    (recur (subvec patha 1) (subvec pathb 1))) ;; Normal case
         :else    (< l r)))))
 
@@ -62,50 +69,62 @@
   (for [{val :val} (seq oset)]
     val))
 
+(defn node
+  ([branches]
+    (build-simple-node branches {:clock 3 :disamb "MACADDR"} "data"))
+  ([branches data]
+    (build-simple-node branches {:clock 3 :disamb "MACADDR"} data))
+  ([branches data disamb]
+    (build-simple-node branches {:clock disamb :disamb "MACADDR"} data)))
+
 (deftest item<?-test
-  ;; Basic tests for non-ambiguous paths
-  (let [path (fn [branches]
-              (build-simple-node branches "dis" "data"))]
-    (is (item<? (path '()) (path '(1))))
-    (is (item<? (path '(0)) (path '())))
-    (is (item<? (path '(0)) (path '(1))))
-    (is (item<? (path '(0)) (path '(1 0 1))))
-    (is (item<? (path '(0)) (path '(1 1 0 1))))
-    (is (item<? (path '(0)) (path '(0 1))))
-    (is (item<? (path '(0)) (path '(0 1 0 0))))
-    (is (item<? (path '(0)) (path '(0 1 1 1))))
-    (is (item<? (path '(1 0)) (path '(1 1))))
-    (is (item<? (path '(1 0)) (path '(1 0 1))))
-    (is (item<? (path '(1 0)) (path '(1 1 1 1))))
-    (is (item<? (path '(1 1 0)) (path '(1 1 1))))
-    (is (item<? (path '(1 1 0)) (path '(1 1 1 0))))
-    (is (item<? (path '(0 0 1)) (path '(0 1))))
-    (is (item<? (path '(0 0 1)) (path '(0 1 0))))
-    (is (not (item<? (path '()) (path '(0)))))
-    (is (not (item<? (path '(0 0 1)) (path '(0 0)))))
-    (is (not (item<? (path '(0 0 1))(path '(0 0 0)))))
-    (is (not (item<? (path '(01 1)) (path '(0 0)))))
-    (is (not (item<? (path '(1)) (path '()))))
-    (is (not (item<? (path '(1 1 0)) (path '(0 1 1)))))
-    (is (not (item<? (path '(1 1 0)) (path '(1 0 1)))))
-    (is (not (item<? (path '(0 0 1)) (path '(0 0)))))))
+;; Basic tests for non-ambiguous nodes
+  (is (item<? (node '()) (node '(1))))
+  (is (item<? (node '(0)) (node '())))
+  (is (item<? (node '(0)) (node '(1))))
+  (is (item<? (node '(0)) (node '(1 0 1))))
+  (is (item<? (node '(0)) (node '(1 1 0 1))))
+  (is (item<? (node '(0)) (node '(0 1))))
+  (is (item<? (node '(0)) (node '(0 1 0 0))))
+  (is (item<? (node '(0)) (node '(0 1 1 1))))
+  (is (item<? (node '(1 0)) (node '(1 1))))
+  (is (item<? (node '(1 0)) (node '(1 0 1))))
+  (is (item<? (node '(1 0)) (node '(1 1 1 1))))
+  (is (item<? (node '(1 1 0)) (node '(1 1 1))))
+  (is (item<? (node '(1 1 0)) (node '(1 1 1 0))))
+  (is (item<? (node '(0 0 1)) (node '(0 1))))
+  (is (item<? (node '(0 0 1)) (node '(0 1 0))))
+  (is (not (item<? (node '()) (node '(0)))))
+  (is (not (item<? (node '(0 0 1)) (node '(0 0)))))
+  (is (not (item<? (node '(0 0 1))(node '(0 0 0)))))
+  (is (not (item<? (node '(01 1)) (node '(0 0)))))
+  (is (not (item<? (node '(1)) (node '()))))
+  (is (not (item<? (node '(1 1 0)) (node '(0 1 1)))))
+  (is (not (item<? (node '(1 1 0)) (node '(1 0 1)))))
+  (is (not (item<? (node '(0 0 1)) (node '(0 0))))))
+
+(deftest disambiguator-test
+  (is (item<? (node '(0 1) "a" 3) (node '(0 1) "a" 4)))
+  (is (item<? (node '(0 1) "a" 3) (node '(0 1) "b" 7)))
+  (is (item<? (node '(0 0) "a" 3) (node '(0 1) "a" 4)))
+  (is (item<? (node '(1 1 0) "a" 0) (node '(1 1 0) "a" 1)))
+  (is (not (item<? (node '(0 1) "a" 3) (node '(0 1) "a" 2))))
+  (is (not (item<? (node '(1 0 1) "z" 6) (node '(1 0 1) "a" 2)))))
 
 (deftest orderedset-test
-  (let [node (fn [branches data]
-          (build-simple-node branches "dis" data))
-        is! (fn [os val]
+  (let [is! (fn [os val]
               (is (= os val))
               os)
         is-str! (fn [oseq s]
                   (is (= (apply str oseq) s))
                   oseq)]
   (-> (ordered-set)
-    (conj (node '()     "c"))
-    (conj (node '(0)    "b"))
-    (conj (node '(0 0)  "a"))
-    (conj (node '(1)    "e"))
-    (conj (node '(1 0)  "d"))
-    (conj (node '(1 1)  "f"))
+    (conj (node '()       "c"))
+    (conj (node '(0)      "b"))
+    (conj (node '(0 0)    "a"))
+    (conj (node '(1)      "e"))
+    (conj (node '(1 0)    "d"))
+    (conj (node '(1 1)    "f"))
     (conj (node '(0 0 0)  "q"))
     (set-as-values)
     (is! '("q" "a" "b" "c" "d" "e" "f"))
