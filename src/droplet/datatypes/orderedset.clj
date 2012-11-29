@@ -43,9 +43,13 @@
                    (recur (subvec patha 1) (subvec pathb 1))) ;; Normal case
         :else    (< l r)))))
 
+(defn ordered-set
+  []
+  (sorted-set-by item<?))
+
 ;; Build a simple path (that is, no nodes in path are minor nodes)
 ;;  from a list of branches and a disambiguator
-(defn build-simple-path
+(defn build-simple-node
   [branches disamb val]
   (let [path (into []
                (for [x branches] {:branch x}))]
@@ -53,10 +57,15 @@
                  (assoc (last path) :disamb disamb))
      :val val}))
 
-(deftest comparator-test
+(defn set-as-values
+  [oset]
+  (for [{val :val} (seq oset)]
+    val))
+
+(deftest item<?-test
   ;; Basic tests for non-ambiguous paths
   (let [path (fn [branches]
-              (build-simple-path branches "dis" "data"))]
+              (build-simple-node branches "dis" "data"))]
     (is (item<? (path '()) (path '(1))))
     (is (item<? (path '(0)) (path '())))
     (is (item<? (path '(0)) (path '(1))))
@@ -80,3 +89,24 @@
     (is (not (item<? (path '(1 1 0)) (path '(0 1 1)))))
     (is (not (item<? (path '(1 1 0)) (path '(1 0 1)))))
     (is (not (item<? (path '(0 0 1)) (path '(0 0)))))))
+
+(deftest orderedset-test
+  (let [node (fn [branches data]
+          (build-simple-node branches "dis" data))
+        is! (fn [os val]
+              (is (= os val))
+              os)
+        is-str! (fn [oseq s]
+                  (is (= (apply str oseq) s))
+                  oseq)]
+  (-> (ordered-set)
+    (conj (node '()     "c"))
+    (conj (node '(0)    "b"))
+    (conj (node '(0 0)  "a"))
+    (conj (node '(1)    "e"))
+    (conj (node '(1 0)  "d"))
+    (conj (node '(1 1)  "f"))
+    (conj (node '(0 0 0)  "q"))
+    (set-as-values)
+    (is! '("q" "a" "b" "c" "d" "e" "f"))
+    (is-str! "qabcdef"))))
