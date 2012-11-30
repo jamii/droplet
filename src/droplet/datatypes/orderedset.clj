@@ -1,6 +1,6 @@
 (ns droplet.datatypes.orderedset
   (require clojure.set
-       [droplet.datalog :as d])
+           [droplet.datalog :as d])
   (use droplet
        clojure.test))
 
@@ -19,6 +19,10 @@
 ;;  goes through a minor node
 ;; A disambiguator is a (clock, siteid) pair where clock is a lamport clock, the clock value that a node had when inserting that value
 ; (defrecord SetItem [path val])
+
+;;
+;; TODO optimize by only storing disambiguators for nodes that need it (last node or mini-nodes)
+;;
 
 (defrecord OrderedSet [oset clock]
   SemiLattice
@@ -67,7 +71,7 @@
   "Returns if the first path is an ancestor to the second"
   [patha pathb]
   (if-not (>= (path-len patha) (path-len pathb)) ;; If path A is longer or equal, no way it can be an ancestor
-    (loop [patha patha                     ;; Otherwise, determine if it's an ancestor
+    (loop [patha patha                           ;; Otherwise, determine if it's an ancestor
            pathb pathb]
       (let [{l :branch l-disamb :disamb} (first patha)
             {r :branch r-disamb :disamb} (first pathb)]
@@ -97,12 +101,21 @@
   There must be no already-existing id between the two paths.
   They must be adjacent"
   [{patha :path} {pathb :path}]
-  (prn "Ancestor?" (ancestor? patha pathb))
   (cond
     (ancestor? patha pathb) (conj pathb (new-node 0))
     (ancestor? pathb patha) (conj patha (new-node 1))
     (mini-sibling? patha pathb) (conj patha (new-node 1))
     :else (conj patha (new-node 1))))
+
+(defn insert-after
+  "Inserts a new item in the ordered set after the specified item. Returns the new ordered set"
+  [oset pos data]
+  ;; Steps to an insert:
+  ;;  1) Find next item after position
+  ;;  2) Get path/id between pos and next
+  ;;  3) Insert new item with id
+  ;;  4) Update lamport clock
+  ())
 
 (defn ordered-set
   []
@@ -122,6 +135,7 @@
   [oset]
   (for [{val :val} (seq oset)]
     val))
+
 
 (defn node
   ([branches]
@@ -179,13 +193,27 @@
   (is (not (ancestor? (:path (node '(1))) (:path (node '(0 0 1))))))
   (is (not (ancestor? (:path (node '(1 0 1))) (:path (node '(0 1 0)))))))
 
+(defn is-str! 
+  [oseq s]
+  (is (= (apply str oseq) s))
+    oseq)
+
+(deftest insert-test
+  (let [oset (-> (ordered-set)
+              (conj (node '()       "c"))
+              (conj (node '(0)      "b"))
+              (conj (node '(0 0)    "a"))
+              (conj (node '(1)      "e"))
+              (conj (node '(1 0)    "d"))
+              (conj (node '(1 1)    "f"))
+              (conj (node '(0 0 0)  "q")))]
+  ))
+  ; (is-str! (insert-))))
+
 (deftest orderedset-test
   (let [is! (fn [os val]
               (is (= os val))
-              os)
-        is-str! (fn [oseq s]
-                  (is (= (apply str oseq) s))
-                  oseq)]
+              os)]
   (-> (ordered-set)
     (conj (node '()       "c"))
     (conj (node '(0)      "b"))
