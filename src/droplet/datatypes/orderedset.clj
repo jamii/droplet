@@ -87,8 +87,8 @@
    (= (for [{branch :branch} patha] branch)
       (for [{branch :branch} patha] branch)))
 
-(defn new-node
-  "Returns a new node with the given branch
+(defn pathnode
+  "Returns a new pathnode with the given branch
    and automatically-filled in disambiguator
 
    TODO use real lamport clock and macaddr for this!"
@@ -100,22 +100,33 @@
 
   There must be no already-existing id between the two paths.
   They must be adjacent"
+  ;; TODO remove disambiguator from any non-mioni node, we we only
+  ;;      need it at the end
   [{patha :path} {pathb :path}]
   (cond
-    (ancestor? patha pathb) (conj pathb (new-node 0))
-    (ancestor? pathb patha) (conj patha (new-node 1))
-    (mini-sibling? patha pathb) (conj patha (new-node 1))
-    :else (conj patha (new-node 1))))
+    (ancestor? patha pathb) (conj pathb (pathnode 0))
+    (ancestor? pathb patha) (conj patha (pathnode 1))
+    (mini-sibling? patha pathb) (conj patha (pathnode 1))
+    :else (conj patha (pathnode 1))))
 
+;; Steps to an insert:
+;;  1) Find next item after position
+;;  2) Get path/id between pos and next
+;;  3) Insert new item with id
+;;  4) Update lamport clock
+;;
+;; NOTE: Extremely inefficient at the moment. Finding the required node is worst-case
+;;        O(n) if the node is at the end. O(n) inserts are no good.
+;;       Consider better ways to do this---might require changing the API (just inserting based
+;;         on the data means we'll always have to linear search for the right node)
+;;
+;; TODO lamport clock
 (defn insert-after
   "Inserts a new item in the ordered set after the specified item. Returns the new ordered set"
-  [oset pos data]
-  ;; Steps to an insert:
-  ;;  1) Find next item after position
-  ;;  2) Get path/id between pos and next
-  ;;  3) Insert new item with id
-  ;;  4) Update lamport clock
-  ())
+  [oset prev-data data]
+  (if-let [from-prev (seq (drop-while #(not= (:val %) prev-data) oset))]
+    (conj oset {:path (new-id (first from-prev) (second from-prev)) :val data})
+    oset))
 
 (defn ordered-set
   []
@@ -139,11 +150,11 @@
 
 (defn node
   ([branches]
-    (build-simple-node branches {:clock 3 :disamb "MACADDR"} "data"))
+    (build-simple-node branches {:clock 3 :siteid "MACADDR"} "data"))
   ([branches data]
-    (build-simple-node branches {:clock 3 :disamb "MACADDR"} data))
+    (build-simple-node branches {:clock 3 :siteid "MACADDR"} data))
   ([branches data disamb]
-    (build-simple-node branches {:clock disamb :disamb "MACADDR"} data)))
+    (build-simple-node branches {:clock disamb :siteid "MACADDR"} data)))
 
 (deftest item<?-test
 ;; Basic tests for non-ambiguous nodes
@@ -194,9 +205,14 @@
   (is (not (ancestor? (:path (node '(1 0 1))) (:path (node '(0 1 0)))))))
 
 (defn is-str! 
-  [oseq s]
-  (is (= (apply str oseq) s))
-    oseq)
+  [oset s]
+  (is (= (apply str (set-as-values oset)) s))
+    oset)
+
+(defn is!
+  [oset val]
+  (is (= (set-as-values oset) val))
+  oset)
 
 (deftest insert-test
   (let [oset (-> (ordered-set)
@@ -210,18 +226,33 @@
   ))
   ; (is-str! (insert-))))
 
-(deftest orderedset-test
-  (let [is! (fn [os val]
-              (is (= os val))
-              os)]
+(defn make-filled-oset
+  []
   (-> (ordered-set)
     (conj (node '()       "c"))
     (conj (node '(0)      "b"))
     (conj (node '(0 0)    "a"))
     (conj (node '(1)      "e"))
     (conj (node '(1 0)    "d"))
-    (conj (node '(1 1)    "f"))
+    (conj (node '(1 1)    "f"))))
+
+(deftest orderedset-test
+  (-> (make-filled-oset)
     (conj (node '(0 0 0)  "q"))
-    (set-as-values)
     (is! '("q" "a" "b" "c" "d" "e" "f"))
-    (is-str! "qabcdef"))))
+    (is-str! "qabcdef")))
+
+(deftest insertafter-test
+  (-> (make-filled-oset)
+    (insert-after "a" "m")
+    (is-str! "ambcdef")
+    (insert-after "d" "q")
+    (is-str! "ambcdqef")
+    (insert-after "q" "z")
+    (is-str! "ambcdqzef")
+    (insert-after "f" "l")
+    (is-str! "ambcdqzefl")
+    (insert-after "q" "uuuu")
+    (is-str! "ambcdquuuuzefl")
+    (insert-after "notfound" "notinserted")
+    (is-str! "ambcdquuuuzefl")))
