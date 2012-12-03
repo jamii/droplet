@@ -19,17 +19,28 @@
 ;; A disambiguator for a non-tail node is omitted if the path passes through a major node. It is included if the path
 ;;  goes through a minor node
 ;; A disambiguator is a (clock, siteid) pair where clock is a lamport clock, the clock value that a node had when inserting that value
-; (defrecord SetItem [path val])
+;; (defrecord SetItem [path val])
+
+;;
+;; Note that we diverge from the algorithm described in the Souza2012 paper when it comes to the Version Vector. The paper described
+;;  the version vector as containing {disamb(node), counter} pairs, but if we only keep track of disambiguators, in the compare function
+;;  we cannot get a list of node paths that do not exist in the set *but* have have an entry in the version vector---we would need to
+;;  keep a list of "removed nodes" by disambiguator. Instead we make the VV key be the path+disambiguator, so we can retrieve the path
+;;  directly.
+;;
 
 ;;
 ;; TODO optimize by only storing disambiguators for nodes that need it (last node or mini-nodes)
 ;;
 
+(def clock (atom 0))
+
 (defn clock-value
   "Next value for this node's vector clock id
   TODO"
   []
-  15)
+  (swap! clock inc)
+  @clock)
 
 (defn set-as-values
   [oset]
@@ -98,7 +109,12 @@
 
    TODO use real lamport clock and macaddr for this!"
    [branch]
-   {:branch branch :disamb {:clock 7 :siteid "MACADDRESS"}})
+   {:branch branch :disamb {:clock (clock-value) :siteid "MACADDRESS"}})
+
+(defn disamb-for-path
+  "Returns the disambiguator for the node described by the given path"
+  [path]
+  (:disamb (last path)))
 
 (defn new-id
   "Returns a new position id between the two given ids
@@ -144,7 +160,7 @@
       oset-lattice ;; If we didn't find the previous term (but it was specified) ignore
       (-> oset-lattice ;; Insert item and update item in vc
         (update-in [:oset] conj {:path path :val data})
-        (update-in [:vc] #(join % {path (->Max (clock-value))}))))))
+        (update-in [:vc] #(join % {path (->Max (:clock (disamb-for-path path)))}))))))
 
 (defn oset-remove
   "Removes the desired item from this set and returns it"
@@ -170,9 +186,12 @@
     (let [this-removed (removed-set this)
           that-removed (removed-set that)]
       (and (lte? (:vc this) (:vc that))
-           (subset? this-removed that-removed))))
+           (clojure.set/subset? this-removed that-removed))))
   (join [this that]
-  ))
+    (let [new-in-that (set (for [item (:oset that) :when (not (some #{(:path item)} (:vc this)))] item)) ;; New items added in that that were not removed in this
+          removed-in-this (set (for [item (clojure.set/difference (:oset this) (:oset that)) :when (some #{(:path item)} (:vc that))] item)) ;; Items removed in this which that already knew about
+          updated-set (clojure.set/union (:oset this (clojure.set/difference new-in-that removed-in-this)))]
+      (->OrderedSet updated-set (join (:vc this) (:vc that))))))
 
 ;; Build a simple path (that is, no nodes in path are minor nodes)
 ;;  from a list of branches and a disambiguator
@@ -308,3 +327,7 @@
     (is-str-l! "abcdqzel")
     (oset-remove "s")
     (is-str-l! "abcdqzel")))
+
+(deftest lattice-test
+  (-> (make-filled-oset-lattice)))
+
