@@ -38,11 +38,18 @@
   (for [{val :val} (seq oset)]
     val))
 
+(defn siteid<?
+  "Returns a < relation for two site ids, that are usually MAC addresses.
+
+  TODO real mac addresses.. for now just string comparison"
+  [macaddra macaddrb]
+  (< (.compareTo macaddra macaddrb) 0))
+
 (defn disamb<?
   [disamb-a disamb-b]
   (if (not= (:clock disamb-a) (:clock disamb-b))
     (< (:clock disamb-a) (:clock disamb-b)) ;; If there is a lamport clock ordering, use that
-    (< (:siteid disamb-a) (:siteid disamb-b)))) ;; else order by MAC address
+    (siteid<? (:siteid disamb-a) (:siteid disamb-b)))) ;; else order by MAC address
 
 ;; Compare by path and break ties (mini-nodes are siblings in same major node) with disambiguator
 (defn item<?
@@ -100,7 +107,7 @@
 
   There must be no already-existing id between the two paths.
   They must be adjacent"
-  ;; TODO remove disambiguator from any non-mioni node, we we only
+  ;; TODO remove disambiguator from any non-mini node, we we only
   ;;      need it at the end
   [{patha :path} {pathb :path}]
   (cond
@@ -119,13 +126,23 @@
 ;;        O(n) if the node is at the end. O(n) inserts are no good.
 ;;       Consider better ways to do this---might require changing the API (just inserting based
 ;;         on the data means we'll always have to linear search for the right node)
+;;       Try a zipper?
+;;
+;; Same goes for remove
 ;;
 ;; TODO lamport clock
-(defn insert-after
+(defn oset-insert
   "Inserts a new item in the ordered set after the specified item. Returns the new ordered set"
   [oset prev-data data]
   (if-let [from-prev (seq (drop-while #(not= (:val %) prev-data) oset))]
     (conj oset {:path (new-id (first from-prev) (second from-prev)) :val data})
+    oset))
+
+(defn oset-remove
+  "Removes the desired item from this set and returns it"
+  [oset item]
+  (if-let [found (first (filter #(= (:val %) item) oset))]
+    (disj oset found)
     oset))
 
 (defn ordered-set
@@ -242,17 +259,25 @@
     (is! '("q" "a" "b" "c" "d" "e" "f"))
     (is-str! "qabcdef")))
 
-(deftest insertafter-test
+(deftest operation-test
   (-> (make-filled-oset)
-    (insert-after "a" "m")
+    (oset-insert "a" "m")
     (is-str! "ambcdef")
-    (insert-after "d" "q")
+    (oset-insert "d" "q")
     (is-str! "ambcdqef")
-    (insert-after "q" "z")
+    (oset-insert "q" "z")
     (is-str! "ambcdqzef")
-    (insert-after "f" "l")
+    (oset-insert "f" "l")
     (is-str! "ambcdqzefl")
-    (insert-after "q" "uuuu")
+    (oset-insert "q" "uuuu")
     (is-str! "ambcdquuuuzefl")
-    (insert-after "notfound" "notinserted")
-    (is-str! "ambcdquuuuzefl")))
+    (oset-insert "notfound" "notinserted")
+    (is-str! "ambcdquuuuzefl")
+    (oset-remove "m")
+    (is-str! "abcdquuuuzefl")
+    (oset-remove "uuuu")
+    (is-str! "abcdqzefl")
+    (oset-remove "f")
+    (is-str! "abcdqzel")
+    (oset-remove "s")
+    (is-str! "abcdqzel")))
