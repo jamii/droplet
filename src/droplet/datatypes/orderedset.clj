@@ -1,6 +1,7 @@
 (ns droplet.datatypes.orderedset
   (require clojure.set
-           [droplet.datalog :as d])
+           [droplet.datalog :as d]
+           [droplet.test :as kvs])
   (use droplet
        clojure.test))
 
@@ -24,14 +25,11 @@
 ;; TODO optimize by only storing disambiguators for nodes that need it (last node or mini-nodes)
 ;;
 
-(defrecord OrderedSet [oset clock]
-  SemiLattice
-  (bottom [this]
-  )
-  (lte? [this that]
-  )
-  (join [this that]
-  ))
+(defn clock-value
+  "Next value for this node's vector clock id
+  TODO"
+  []
+  15)
 
 (defn set-as-values
   [oset]
@@ -111,7 +109,9 @@
   ;;      need it at the end
   [{patha :path} {pathb :path}]
   (cond
-    (ancestor? patha pathb) (conj pathb (pathnode 0))
+    (and (nil? patha) (nil? pathb)) [] ;; If it's an empty tree, create the root
+    (and (nil? patha) (not (nil? pathb))) (conj pathb (pathnode 0)) ;; If we're inserting at the left-most position
+    (ancestor? patha pathb) (conj pathb (pathnode 0)) ;; If we need to make a left child of path b
     (ancestor? pathb patha) (conj patha (pathnode 1))
     (mini-sibling? patha pathb) (conj patha (pathnode 1))
     :else (conj patha (pathnode 1))))
@@ -132,22 +132,47 @@
 ;;
 ;; TODO lamport clock
 (defn oset-insert
-  "Inserts a new item in the ordered set after the specified item. Returns the new ordered set"
-  [oset prev-data data]
-  (if-let [from-prev (seq (drop-while #(not= (:val %) prev-data) oset))]
-    (conj oset {:path (new-id (first from-prev) (second from-prev)) :val data})
-    oset))
+  "Inserts a new item in the ordered set after the specified item. If nil is supplied,
+  inserts at the beginning.
+  Returns the new ordered set"
+  [{oset :oset :as oset-lattice} prev-data data]
+  (let [from-prev (seq (drop-while #(not= (:val %) prev-data) oset))
+        before (first from-prev)
+        after (if before (second from-prev) (first oset))
+        path (new-id before after)]
+    (if (and (nil? before) (not (nil? prev-data)))
+      oset-lattice ;; If we didn't find the previous term (but it was specified) ignore
+      (-> oset-lattice ;; Insert item and update item in vc
+        (update-in [:oset] conj {:path path :val data})
+        (update-in [:vc] #(join % {path (->Max (clock-value))}))))))
 
 (defn oset-remove
   "Removes the desired item from this set and returns it"
-  [oset item]
+  [{oset :oset :as oset-lattice} item]
   (if-let [found (first (filter #(= (:val %) item) oset))]
-    (disj oset found)
-    oset))
+    (assoc oset-lattice :oset (disj oset found))
+    oset-lattice))
 
 (defn ordered-set
   []
   (sorted-set-by item<?))
+
+(defn removed-set
+  [oset-lattice]
+  (let [existing-paths (for [node (:oset oset-lattice)] (:path node))]
+    (set (for [item (:vc oset-lattice) :when (not (some #{(first item)} existing-paths))] (first item)))))
+
+(defrecord OrderedSet [oset vc]
+  SemiLattice
+  (bottom [this]
+    (->OrderedSet (ordered-set) (kvs/->Causal {} nil)))
+  (lte? [this that]
+    (let [this-removed (removed-set this)
+          that-removed (removed-set that)]
+      (and (lte? (:vc this) (:vc that))
+           (subset? this-removed that-removed))))
+  (join [this that]
+  ))
 
 ;; Build a simple path (that is, no nodes in path are minor nodes)
 ;;  from a list of branches and a disambiguator
@@ -164,7 +189,6 @@
   (for [{val :val} (seq oset)]
     val))
 
-
 (defn node
   ([branches]
     (build-simple-node branches {:clock 3 :siteid "MACADDR"} "data"))
@@ -172,6 +196,26 @@
     (build-simple-node branches {:clock 3 :siteid "MACADDR"} data))
   ([branches data disamb]
     (build-simple-node branches {:clock disamb :siteid "MACADDR"} data)))
+
+(defn make-filled-oset
+  []
+  (-> (ordered-set)
+    (conj (node '()       "c"))
+    (conj (node '(0)      "b"))
+    (conj (node '(0 0)    "a"))
+    (conj (node '(1)      "e"))
+    (conj (node '(1 0)    "d"))
+    (conj (node '(1 1)    "f")))))
+
+(defn make-filled-oset-lattice
+  []
+  (-> (->OrderedSet (ordered-set) (kvs/->Causal {} nil))
+    (oset-insert nil "c")
+    (oset-insert nil "a")
+    (oset-insert "a" "b")
+    (oset-insert "c" "d")
+    (oset-insert "d" "e")
+    (oset-insert "e" "f")))
 
 (deftest item<?-test
 ;; Basic tests for non-ambiguous nodes
@@ -224,60 +268,43 @@
 (defn is-str! 
   [oset s]
   (is (= (apply str (set-as-values oset)) s))
-    oset)
+  oset)
 
-(defn is!
+(defn is-str-l! 
+  [{oset :oset :as oset-lattice} s]
+  (is (= (apply str (set-as-values oset)) s))
+  oset-lattice)
+
+(defn is-contents!
   [oset val]
   (is (= (set-as-values oset) val))
   oset)
 
-(deftest insert-test
-  (let [oset (-> (ordered-set)
-              (conj (node '()       "c"))
-              (conj (node '(0)      "b"))
-              (conj (node '(0 0)    "a"))
-              (conj (node '(1)      "e"))
-              (conj (node '(1 0)    "d"))
-              (conj (node '(1 1)    "f"))
-              (conj (node '(0 0 0)  "q")))]
-  ))
-  ; (is-str! (insert-))))
-
-(defn make-filled-oset
-  []
-  (-> (ordered-set)
-    (conj (node '()       "c"))
-    (conj (node '(0)      "b"))
-    (conj (node '(0 0)    "a"))
-    (conj (node '(1)      "e"))
-    (conj (node '(1 0)    "d"))
-    (conj (node '(1 1)    "f"))))
-
 (deftest orderedset-test
   (-> (make-filled-oset)
     (conj (node '(0 0 0)  "q"))
-    (is! '("q" "a" "b" "c" "d" "e" "f"))
+    (is-contents! '("q" "a" "b" "c" "d" "e" "f"))
     (is-str! "qabcdef")))
 
 (deftest operation-test
-  (-> (make-filled-oset)
+  (-> (make-filled-oset-lattice)
     (oset-insert "a" "m")
-    (is-str! "ambcdef")
+    (is-str-l! "ambcdef")
     (oset-insert "d" "q")
-    (is-str! "ambcdqef")
+    (is-str-l! "ambcdqef")
     (oset-insert "q" "z")
-    (is-str! "ambcdqzef")
+    (is-str-l! "ambcdqzef")
     (oset-insert "f" "l")
-    (is-str! "ambcdqzefl")
+    (is-str-l! "ambcdqzefl")
     (oset-insert "q" "uuuu")
-    (is-str! "ambcdquuuuzefl")
+    (is-str-l! "ambcdquuuuzefl")
     (oset-insert "notfound" "notinserted")
-    (is-str! "ambcdquuuuzefl")
+    (is-str-l! "ambcdquuuuzefl")
     (oset-remove "m")
-    (is-str! "abcdquuuuzefl")
+    (is-str-l! "abcdquuuuzefl")
     (oset-remove "uuuu")
-    (is-str! "abcdqzefl")
+    (is-str-l! "abcdqzefl")
     (oset-remove "f")
-    (is-str! "abcdqzel")
+    (is-str-l! "abcdqzel")
     (oset-remove "s")
-    (is-str! "abcdqzel")))
+    (is-str-l! "abcdqzel")))
