@@ -3,7 +3,8 @@
            [droplet.datalog :as d]
            [droplet.test :as kvs])
   (use droplet
-       clojure.test))
+       clojure.test
+       clojure.pprint))
 
 ;; Provides an ordered set lattice inspired by Treedoc:
 ;;  http://hal.inria.fr/inria-00445975
@@ -204,8 +205,7 @@
   (join [this that]
     (let [new-in-that (set (for [item (:oset that) :when (not (some #{(:path item)} (:vc this)))] item)) ;; New items added in that that were not removed in this
           removed-in-this (set (for [item (clojure.set/difference (:oset this) (:oset that)) :when (some #{(:path item)} (:vc that))] item)) ;; Items removed in this which that already knew about
-          updated-set (clojure.set/union (:oset this (clojure.set/difference new-in-that removed-in-this)))]
-      (prn "Doing merge with two vcs:" (:vc this) (:vc that))
+          updated-set (apply sorted-set-by item<? (clojure.set/union (:oset this) (clojure.set/difference new-in-that removed-in-this)))]
       (->OrderedSet updated-set (join (:vc this) (:vc that))))))
 
 ;; Build a simple path (that is, no nodes in path are minor nodes)
