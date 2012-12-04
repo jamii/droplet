@@ -31,7 +31,8 @@
 ;;
 
 ;;
-;; TODO optimize by only storing disambiguators for nodes that need it (last node or mini-nodes)
+;; TODO don't remove disambiguator for mini nodes when building path(last node or mini-nodes)
+;; TODO make idempotent (can easily check if adding a node to the same place that a node already exists, just not there yet)
 ;;
 
 (def clock (atom 0))
@@ -204,8 +205,8 @@
            (clojure.set/subset? this-removed that-removed))))
   (join [this that]
     (let [new-in-that (set (for [item (:oset that) :when (not (some #{(:path item)} (:vc this)))] item)) ;; New items added in that that were not removed in this
-          removed-in-this (set (for [item (clojure.set/difference (:oset this) (:oset that)) :when (some #{(:path item)} (:vc that))] item)) ;; Items removed in this which that already knew about
-          updated-set (apply sorted-set-by item<? (clojure.set/union (:oset this) (clojure.set/difference new-in-that removed-in-this)))]
+          removed-in-this (set (for [item (clojure.set/difference (:oset this) (:oset that)) :when (some #{(:path item)} (keys (:vc that)))] item)) ;; Items removed in this which that already knew about
+          updated-set (apply sorted-set-by item<? (clojure.set/difference (clojure.set/union (:oset this) new-in-that) removed-in-this))]
       (->OrderedSet updated-set (join (:vc this) (:vc that))))))
 
 ;; Build a simple path (that is, no nodes in path are minor nodes)
@@ -353,9 +354,17 @@
 
 (deftest lattice-test
   (let [a (make-filled-oset-lattice)
-        b (oset-insert a "f" "z")
-        c (oset-insert a "c" "l")]
+        b (oset-insert a "f" "z") ;; Adds z after f
+        c (oset-insert a "c" "l") ;; Adds l after c
+        d (oset-remove a "c")]    ;; Removes
     (is-str-l! (join a b) "abcdefz")
-    (is-str-l! (join a c) "abcldef")))
+    (is-str-l! (join a c) "abcldef")
+    (is-str-l! (join b c) "abcldefz")
+    (is-str-l! (join a (join b c)) "abcldefz")
+    (is-str-l! (join a d) "abdef") ;; NOTE is this what we want? not commutative when joining two lattices w/ a removed element
+    (is-str-l! (join d a) "abcdef")
+    (is-str-l! (join b d) "abdefz")
+    (is-str-l! (join c d) "abldef")
+    (is-str-l! (join b (join c d)) "abldefz")))
 
 
