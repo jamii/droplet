@@ -111,6 +111,19 @@
    [branch]
    {:branch branch :disamb {:clock (clock-value) :siteid "MACADDRESS"}})
 
+(defn extend-path
+  "Extends the given path with a new tail element in the path. Will remove any disambiguator
+   in the last path node if it's a major node before extending
+
+   TODO check for major node, removes unconditionally right now"
+   [oldpath newnode]
+   ;; Filter out root node with {branch :nil}
+   (let [cleanpath (vec (filter #(:branch %) oldpath))]
+     (cond
+      (= 0 (count cleanpath)) [newnode]
+      (= 1 (count cleanpath)) (conj [(select-keys (first cleanpath) (list :branch))] newnode)
+      :else (conj (conj (vec (butlast cleanpath)) (select-keys (last cleanpath) (list :branch))) newnode))))
+
 (defn disamb-for-path
   "Returns the disambiguator for the node described by the given path"
   [path]
@@ -125,12 +138,12 @@
   ;;      need it at the end
   [{patha :path} {pathb :path}]
   (cond
-    (and (nil? patha) (nil? pathb)) [] ;; If it's an empty tree, create the root
-    (and (nil? patha) (not (nil? pathb))) (conj pathb (pathnode 0)) ;; If we're inserting at the left-most position
-    (ancestor? patha pathb) (conj pathb (pathnode 0)) ;; If we need to make a left child of path b
-    (ancestor? pathb patha) (conj patha (pathnode 1))
-    (mini-sibling? patha pathb) (conj patha (pathnode 1))
-    :else (conj patha (pathnode 1))))
+    (and (nil? patha) (nil? pathb)) [(pathnode nil)] ;; If it's an empty tree, create the root
+    (and (nil? patha) (not (nil? pathb))) (extend-path pathb (pathnode 0)) ;; If we're inserting at the left-most position
+    (ancestor? patha pathb) (extend-path pathb (pathnode 0)) ;; If we need to make a left child of path b
+    (ancestor? pathb patha) (extend-path patha (pathnode 1))
+    (mini-sibling? patha pathb) (extend-path patha (pathnode 1))
+    :else (extend-path patha (pathnode 1))))
 
 ;; Steps to an insert:
 ;;  1) Find next item after position
@@ -160,7 +173,8 @@
       oset-lattice ;; If we didn't find the previous term (but it was specified) ignore
       (-> oset-lattice ;; Insert item and update item in vc
         (update-in [:oset] conj {:path path :val data})
-        (update-in [:vc] #(join % {path (->Max (:clock (disamb-for-path path)))}))))))
+        (update-in [:vc] #(join % {path (->Max (:clock (disamb-for-path path)))}))
+        ))))
 
 (defn oset-remove
   "Removes the desired item from this set and returns it"
@@ -191,6 +205,7 @@
     (let [new-in-that (set (for [item (:oset that) :when (not (some #{(:path item)} (:vc this)))] item)) ;; New items added in that that were not removed in this
           removed-in-this (set (for [item (clojure.set/difference (:oset this) (:oset that)) :when (some #{(:path item)} (:vc that))] item)) ;; Items removed in this which that already knew about
           updated-set (clojure.set/union (:oset this (clojure.set/difference new-in-that removed-in-this)))]
+      (prn "Doing merge with two vcs:" (:vc this) (:vc that))
       (->OrderedSet updated-set (join (:vc this) (:vc that))))))
 
 ;; Build a simple path (that is, no nodes in path are minor nodes)
@@ -224,7 +239,7 @@
     (conj (node '(0 0)    "a"))
     (conj (node '(1)      "e"))
     (conj (node '(1 0)    "d"))
-    (conj (node '(1 1)    "f")))))
+    (conj (node '(1 1)    "f"))))
 
 (defn make-filled-oset-lattice
   []
@@ -305,6 +320,14 @@
     (is-contents! '("q" "a" "b" "c" "d" "e" "f"))
     (is-str! "qabcdef")))
 
+(defn strval
+  [{oset :oset}]
+  (apply str (set-as-values oset)))
+
+(def a (make-filled-oset-lattice))
+(def b (oset-insert a "f" "z"))
+(def c (oset-insert a "c" "l"))
+
 (deftest operation-test
   (-> (make-filled-oset-lattice)
     (oset-insert "a" "m")
@@ -329,5 +352,10 @@
     (is-str-l! "abcdqzel")))
 
 (deftest lattice-test
-  (-> (make-filled-oset-lattice)))
+  (let [a (make-filled-oset-lattice)
+        b (oset-insert a "f" "z")
+        c (oset-insert a "c" "l")]
+    (is-str-l! (join a b) "abcdefz")
+    (is-str-l! (join a c) "abcldef")))
+
 
