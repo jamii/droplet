@@ -11,17 +11,13 @@
 ;;  http://run.unl.pt/bitstream/10362/7802/1/Sousa_2012.pdf
 
 ;; An ordered set has the two following operations as well as the lattice lte? and join methods:
-;;  insert(pos, elem)
-;;  delete(pos)
+;;  insert(prev-element, elem)
+;;  delete(element)
 ;;
-;; where pos is a position identifier, which is equivalent to a path in the tree that backs the set.
-
 ;; Each item in the ordered set contains a path, which is a list of {:path [{:branch :disamb}] :val val} and the payload value
 ;; A disambiguator for a non-tail node is omitted if the path passes through a major node. It is included if the path
 ;;  goes through a minor node
 ;; A disambiguator is a (clock, siteid) pair where clock is a lamport clock, the clock value that a node had when inserting that value
-;; (defrecord SetItem [path val])
-
 ;;
 ;; Note that we diverge from the algorithm described in the Souza2012 paper when it comes to the Version Vector. The paper described
 ;;  the version vector as containing {disamb(node), counter} pairs, but if we only keep track of disambiguators, in the compare function
@@ -44,7 +40,7 @@
   (swap! clock inc)
   @clock)
 
-(defn set-as-values
+(defn- set-as-values
   [oset]
   (for [{val :val} (seq oset)]
     val))
@@ -327,10 +323,6 @@
 (defn strval
   [{oset :oset}]
   (apply str (set-as-values oset)))
-
-(def a (make-filled-oset-lattice))
-(def b (oset-insert a "f" "z"))
-(def c (oset-insert a "c" "l"))
 
 (deftest operation-test
   (-> (make-filled-oset-lattice)
