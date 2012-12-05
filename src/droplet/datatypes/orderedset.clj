@@ -360,6 +360,21 @@
     (is-str-l! (join d a) "abcdef")
     (is-str-l! (join b d) "abdefz")
     (is-str-l! (join c d) "abldef")
-    (is-str-l! (join b (join c d)) "abldefz")))
+    (is-str-l! (join b (join c d)) "abldefz")
+    (is (lte? a b))
+    (is (lte? a c))
+    (is (lte? a d))
+    (is (not (lte? b a)))
+    (is (not (lte? c a)))
+    (is (not (lte? d a)))))
 
-
+(deftest mininode-test
+  (let [orig (make-filled-oset-lattice)
+        peer1 (oset-insert orig "c" "j")
+        peer2 (oset-insert orig "c" "k")
+        merged (join peer1 peer2)]
+        ;; j and k should share mini-nodes, but j < k since lamport clock ordering
+        ;;   is used to order them
+      (is-str-l! merged "abcjkdef")
+      (is-str-l! (oset-insert merged "k" "l") "abcjkldef")
+      (is-str-l! (oset-insert merged "j" "l") "abcjlkdef")))
