@@ -68,12 +68,14 @@
   (loop [patha patha
          pathb pathb]
     (let [{l :branch l-disamb :disamb} (first patha)
-          {r :branch r-disamb :disamb} (first pathb)]
+          {r :branch r-disamb :disamb} (first pathb)
+          l-is-mininode (and l-disamb (> (count patha) 1))] ;; mininode if this is not the last node and we have a disambiguator
       (cond
         (nil? l) (= r 1)
         (nil? r) (= l 0)
-        (= l r)  (if (and (= 1 (count patha)) (= 1 (count pathb)))
-                   (disamb<? l-disamb r-disamb) ;; Finishes with two mini-siblings, order by disambiguator
+        (= l r) (if (or (and l-is-mininode r-disamb) ;; Comparing mininode to end node or other mininode, order by disambiguator
+                        (and (= 1 (count patha)) (= 1 (count pathb)))) ;; Finishes with two mini-siblings, order by disambiguator
+                   (disamb<? l-disamb r-disamb)
                    (recur (subvec patha 1) (subvec pathb 1))) ;; Normal case
         :else    (< l r)))))
 
@@ -102,8 +104,9 @@
   "Returns true if the two paths are mini-siblings of each other,
    that is, they have the same path but differ in disambiguators"
    [patha pathb]
-   (= (for [{branch :branch} patha] branch)
-      (for [{branch :branch} patha] branch)))
+   (and (= (count patha) (count pathb))
+        (= (for [{branch :branch} patha] branch)
+           (for [{branch :branch} patha] branch))))
 
 (defn pathnode
   "Returns a new pathnode with the given branch
@@ -144,7 +147,7 @@
     (and (nil? patha) (not (nil? pathb))) (extend-path pathb (pathnode 0)) ;; If we're inserting at the left-most position
     (ancestor? patha pathb) (extend-path pathb (pathnode 0)) ;; If we need to make a left child of path b
     (ancestor? pathb patha) (extend-path patha (pathnode 1))
-    (mini-sibling? patha pathb) (extend-path patha (pathnode 1))
+    (mini-sibling? patha pathb) (conj patha (pathnode 1)) ;; Maintain disambiguator if making a child of a mininode
     :else (extend-path patha (pathnode 1))))
 
 ;; Steps to an insert:
