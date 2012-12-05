@@ -1,4 +1,4 @@
-(ns droplet.datatypes.orderedset_test
+(ns test_orderedset
   (require clojure.set
            [droplet.test :as kvs])
   (use droplet
