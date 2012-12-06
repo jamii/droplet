@@ -188,8 +188,15 @@
       (and (lte? (:vc this) (:vc that))
            (clojure.set/subset? this-removed that-removed))))
   (join [this that]
-    (let [new-in-that (set (for [item (:oset that) :when (not (some #{(:path item)} (:vc this)))] item)) ;; New items added in that that were not removed in this
-          removed-in-this (set (for [item (clojure.set/difference (:oset this) (:oset that)) :when (some #{(:path item)} (keys (:vc that)))] item)) ;; Items removed in this which that already knew about
-          updated-set (apply sorted-set-by item<? (clojure.set/difference (clojure.set/union (:oset this) new-in-that) removed-in-this))]
+    (let [new-in-that (set (for [item (:oset that)
+                                  :when (not (some #{(:path item)} (:vc this)))]
+                              item)) ;; New items added in that that were not removed in this
+          removed-in-this (set (for [item (clojure.set/difference (:oset this) (:oset that))
+                                      :when (some #{(:path item)} (keys (:vc that)))]
+                                  item)) ;; Items removed in this which that already knew about
+          updated-set (apply sorted-set-by item<?
+                        (clojure.set/difference
+                          (clojure.set/union (:oset this) new-in-that)
+                          removed-in-this))]
       (->OrderedSet updated-set (join (:vc this) (:vc that))))))
 
