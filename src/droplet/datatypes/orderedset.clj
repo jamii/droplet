@@ -50,19 +50,19 @@
 
 ;; Compare by path and break ties (mini-nodes are siblings in same major node) with disambiguator
 (defn item<?
-  [{patha :path} {pathb :path}]
-  (loop [patha patha
-         pathb pathb]
-    (let [{l :branch l-disamb :disamb} (first patha)
-          {r :branch r-disamb :disamb} (first pathb)
-          l-is-mininode (and l-disamb (> (count patha) 1))] ;; mininode if this is not the last node and we have a disambiguator
+  [{pathl :path} {pathr :path}]
+  (loop [pathl pathl
+         pathr pathr]
+    (let [{l :branch l-disamb :disamb} (first pathl)
+          {r :branch r-disamb :disamb} (first pathr)
+          l-is-mininode (and l-disamb (> (count pathl) 1))] ;; mininode if this is not the last node and we have a disambiguator
       (cond
         (nil? l) (= r 1)
         (nil? r) (= l 0)
         (= l r) (if (or (and l-is-mininode r-disamb) ;; Comparing mininode to end node or other mininode, order by disambiguator
-                        (and (= 1 (count patha)) (= 1 (count pathb)))) ;; Finishes with two mini-siblings, order by disambiguator
+                        (and (= 1 (count pathl)) (= 1 (count pathr)))) ;; Finishes with two mini-siblings, order by disambiguator
                    (disamb<? l-disamb r-disamb)
-                   (recur (subvec patha 1) (subvec pathb 1))) ;; Normal case
+                   (recur (subvec pathl 1) (subvec pathr 1))) ;; Normal case
         :else    (< l r)))))
 
 (defn path-len
@@ -75,24 +75,21 @@
 
 (defn ancestor?
   "Returns if the first path is an ancestor to the second"
-  [patha pathb]
-  (and (< (path-len patha) (path-len pathb)) ;; If path A is longer or equal, no way it can be an ancestor
-    (loop [patha patha                           ;; Otherwise, determine if it's an ancestor
-           pathb pathb]
-      (let [{l :branch l-disamb :disamb} (first patha)
-            {r :branch r-disamb :disamb} (first pathb)]
-        (cond
-          (nil? l) true
-          (= l r)  (recur (subvec patha 1) (subvec pathb 1)) ;; Normal case, equal so continue down the tree
-          :else    nil)))))
+  [pathl pathr]
+  (and (< (path-len pathl) (path-len pathr)) ;; If path A is longer or equal, no way it can be an ancestor
+    (loop [pathl pathl                           ;; Otherwise, determine if it's an ancestor
+           pathr pathr]
+      (let [{l :branch l-disamb :disamb} (first pathl)
+            {r :branch r-disamb :disamb} (first pathr)]
+        (or (nil? l) (and (= l r) (recur (subvec pathl 1) (subvec pathr 1))))))))
 
 (defn mini-sibling?
   "Returns true if the two paths are mini-siblings of each other,
    that is, they have the same path but differ in disambiguators"
-   [patha pathb]
-   (and (= (count patha) (count pathb))
-        (= (for [{branch :branch} patha] branch)
-           (for [{branch :branch} pathb] branch))))
+   [pathl pathr]
+   (and (= (count pathl) (count pathr))
+        (= (for [{branch :branch} pathl] branch)
+           (for [{branch :branch} pathr] branch))))
 
 (defn pathnode
   "Returns a new pathnode with the given branch
@@ -127,14 +124,14 @@
   They must be adjacent"
   ;; TODO remove disambiguator from any non-mini node, we we only
   ;;      need it at the end
-  [{patha :path} {pathb :path}]
+  [{pathl :path} {pathr :path}]
   (cond
-    (and (nil? patha) (nil? pathb)) [(pathnode nil)] ;; If it's an empty tree, create the root
-    (and (nil? patha) (not (nil? pathb))) (extend-path pathb (pathnode 0)) ;; If we're inserting at the left-most position
-    (ancestor? patha pathb) (extend-path pathb (pathnode 0)) ;; If we need to make a left child of path b
-    (ancestor? pathb patha) (extend-path patha (pathnode 1))
-    (mini-sibling? patha pathb) (conj patha (pathnode 1)) ;; Maintain disambiguator if making a child of a mininode
-    :else (extend-path patha (pathnode 1))))
+    (and (nil? pathl) (nil? pathr)) [(pathnode nil)] ;; If it's an empty tree, create the root
+    (and (nil? pathl) (not (nil? pathr))) (extend-path pathr (pathnode 0)) ;; If we're inserting at the left-most position
+    (ancestor? pathl pathr) (extend-path pathr (pathnode 0)) ;; If we need to make a left child of path b
+    (ancestor? pathr pathl) (extend-path pathl (pathnode 1))
+    (mini-sibling? pathl pathr) (conj pathl (pathnode 1)) ;; Maintain disambiguator if making a child of a mininode
+    :else (extend-path pathl (pathnode 1))))
 
 ;; Steps to an insert:
 ;;  1) Find next item after position
