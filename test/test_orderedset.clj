@@ -136,6 +136,8 @@
     (is-str-l! "ambcdqzef")
     (oset-insert "f" "l")
     (is-str-l! "ambcdqzefl")
+    (oset-insert "f" "l")
+    (is-str-l! "ambcdqzefl")
     (oset-insert "q" "uuuu")
     (is-str-l! "ambcdquuuuzefl")
     (oset-insert "notfound" "notinserted")
