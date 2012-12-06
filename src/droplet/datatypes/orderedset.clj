@@ -109,7 +109,6 @@
    (let [cleanpath (vec (filter #(:branch %) oldpath))]
      (cond
       (= 0 (count cleanpath)) [newnode]
-      (= 1 (count cleanpath)) (conj [(select-keys (first cleanpath) (list :branch))] newnode)
       :else (conj (conj (vec (butlast cleanpath)) (select-keys (last cleanpath) (list :branch))) newnode))))
 
 (defn disamb-for-path
