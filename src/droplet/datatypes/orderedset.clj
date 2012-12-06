@@ -26,11 +26,6 @@
 ;;  directly.
 ;;
 
-;;
-;; TODO don't remove disambiguator for mini nodes when building path(last node or mini-nodes)
-;; TODO make idempotent (can easily check if adding a node to the same place that a node already exists, just not there yet)
-;;
-
 (def clock (atom 0))
 
 (defn clock-value
@@ -81,7 +76,7 @@
 (defn ancestor?
   "Returns if the first path is an ancestor to the second"
   [patha pathb]
-  (if-not (>= (path-len patha) (path-len pathb)) ;; If path A is longer or equal, no way it can be an ancestor
+  (and (< (path-len patha) (path-len pathb)) ;; If path A is longer or equal, no way it can be an ancestor
     (loop [patha patha                           ;; Otherwise, determine if it's an ancestor
            pathb pathb]
       (let [{l :branch l-disamb :disamb} (first patha)
@@ -97,7 +92,7 @@
    [patha pathb]
    (and (= (count patha) (count pathb))
         (= (for [{branch :branch} patha] branch)
-           (for [{branch :branch} patha] branch))))
+           (for [{branch :branch} pathb] branch))))
 
 (defn pathnode
   "Returns a new pathnode with the given branch
@@ -154,8 +149,6 @@
 ;;       Try a zipper?
 ;;
 ;; Same goes for remove
-;;
-;; TODO lamport clock
 (defn oset-insert
   "Inserts a new item in the ordered set after the specified item. If nil is supplied,
   inserts at the beginning.
