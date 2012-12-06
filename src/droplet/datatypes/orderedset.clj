@@ -165,12 +165,13 @@
         before (first from-prev)
         after (if before (second from-prev) (first oset))
         path (new-id before after)]
-    (if (and (nil? before) (not (nil? prev-data)))
+    (if (or
+          (and (nil? before) (not (nil? prev-data)))
+          (= (:val after) data))
       oset-lattice ;; If we didn't find the previous term (but it was specified) ignore
       (-> oset-lattice ;; Insert item and update item in vc
         (update-in [:oset] conj {:path path :val data})
-        (update-in [:vc] #(join % {path (->Max (:clock (disamb-for-path path)))}))
-        ))))
+        (update-in [:vc] #(join % {path (->Max (:clock (disamb-for-path path)))}))))))
 
 (defn oset-remove
   "Removes the desired item from this set and returns it"
