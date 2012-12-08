@@ -125,6 +125,11 @@
   [path]
   (:disamb (last path)))
 
+(defn- root-node
+  "Returns a new root node"
+  []
+  [(pathnode nil)])
+
 (defn new-id
   "Returns a new position id between the two given ids
 
@@ -134,8 +139,8 @@
   ;;      need it at the end
   [{pathl :path} {pathr :path}]
   (cond
-    (and (nil? pathl) (nil? pathr)) [(pathnode nil)] ;; If it's an empty tree, create the root
-    (and (nil? pathl) (not (nil? pathr))) (extend-path pathr (pathnode 0)) ;; If we're inserting at the left-most position
+    (and (nil? pathl) (nil? pathr)) (root-node)
+    (and (nil? pathl) (seq pathr)) (extend-path pathr (pathnode 0)) ;; If we're inserting at the left-most position
     (ancestor? pathl pathr) (extend-path pathr (pathnode 0)) ;; If we need to make a left child of path b
     (ancestor? pathr pathl) (extend-path pathl (pathnode 1))
     (mini-sibling? pathl pathr) (conj pathl (pathnode 1)) ;; Maintain disambiguator if making a child of a mininode
@@ -159,13 +164,11 @@
   inserts at the beginning.
   Returns the new ordered set"
   [{oset :oset :as oset-lattice} prev-data data]
-  (let [from-prev (seq (drop-while #(not= (:val %) prev-data) oset))
-        before (first from-prev)
-        after (if before (second from-prev) (first oset))
+  (let [[before after & _] (drop-while #(not= (:val %) prev-data) oset)
+        after (if before after (first oset))
         path (new-id before after)]
-    (if (or
-          (and (nil? before) (not (nil? prev-data)))
-          (= (:val after) data))
+    (if (or (and (nil? before) (not (nil? prev-data)))
+            (= (:val after) data))
       oset-lattice ;; If we didn't find the previous term (but it was specified) ignore
       (-> oset-lattice ;; Insert item and update item in vc
         (update-in [:oset] conj {:path path :val data})
@@ -182,31 +185,43 @@
   []
   (sorted-set-by item<?))
 
+(defn- in
+   "If item exists in coll, return item; else nil."
+   [coll item]
+   (some #{item} coll))
+
+(defn- seq-diff
+  "Returns a new sequence of all elements in seqa not contained in seqb."
+  [seqa seqb]
+  (filter #(not (in seqb %)) seqa))
+
+
 (defn removed-set
-  [oset-lattice]
-  (let [existing-paths (for [node (:oset oset-lattice)] (:path node))]
-    (set (for [item (:vc oset-lattice) :when (not (some #{(first item)} existing-paths))] (first item)))))
+  [{oset :oset vc :vc}]
+  (let [existing-paths (map :path oset)]
+    (set (seq-diff (map first vc) existing-paths))))
 
 ;; Not a true lattice. join is not unique :-/
 (defrecord OrderedSet [oset vc]
   SemiLattice
   (bottom [this]
     (->OrderedSet (ordered-set) (kvs/->Causal {} nil)))
+
   (lte? [this that]
     (let [this-removed (removed-set this)
           that-removed (removed-set that)]
       (and (lte? (:vc this) (:vc that))
            (clojure.set/subset? this-removed that-removed))))
+
   (join [this that]
-    (let [new-in-that (set (for [item (:oset that)
-                                  :when (not (some #{(:path item)} (:vc this)))]
-                              item)) ;; New items added in that that were not removed in this
-          removed-in-this (set (for [item (clojure.set/difference (:oset this) (:oset that))
-                                      :when (some #{(:path item)} (keys (:vc that)))]
-                                  item)) ;; Items removed in this which that already knew about
-          updated-set (apply sorted-set-by item<?
-                        (clojure.set/difference
-                          (clojure.set/union (:oset this) new-in-that)
-                          removed-in-this))]
+    (let [new-in-that (set (seq-diff (:oset that) (:vc this)))
+          vc-keys (keys (:vc that))
+          removed-in-this (set (filter
+                                #(in vc-keys (:path %))
+                                (clojure.set/difference (:oset this) (:oset that))))
+           updated-set (into (ordered-set)
+                             (clojure.set/difference
+                              (clojure.set/union (:oset this) new-in-that)
+                               removed-in-this))]
       (->OrderedSet updated-set (join (:vc this) (:vc that))))))
 
