@@ -160,7 +160,7 @@
     (is-str-l! (join a c) "abcldef")
     (is-str-l! (join b c) "abcldefz")
     (is-str-l! (join a (join b c)) "abcldefz")
-    (is-str-l! (join a d) "abdef") ;; NOTE is this what we want? not commutative when joining two lattices w/ a removed element
+    (is-str-l! (join a d) "abdef") ;; NOTE is this what we want? not commutative when joining two lattices w/ a removed element---yes
     (is-str-l! (join d a) "abcdef")
     (is-str-l! (join b d) "abdefz")
     (is-str-l! (join c d) "abldef")

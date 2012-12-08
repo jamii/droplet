@@ -146,7 +146,7 @@
 ;;        O(n) if the node is at the end. O(n) inserts are no good.
 ;;       Consider better ways to do this---might require changing the API (just inserting based
 ;;         on the data means we'll always have to linear search for the right node)
-;;       Try a zipper?
+;;       ideas...?
 ;;
 ;; Same goes for remove
 (defn oset-insert
@@ -182,6 +182,7 @@
   (let [existing-paths (for [node (:oset oset-lattice)] (:path node))]
     (set (for [item (:vc oset-lattice) :when (not (some #{(first item)} existing-paths))] (first item)))))
 
+;; Not a true lattice. join is not unique :-/
 (defrecord OrderedSet [oset vc]
   SemiLattice
   (bottom [this]
