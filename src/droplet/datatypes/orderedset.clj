@@ -32,8 +32,7 @@
   "Next value for this node's vector clock id
   TODO"
   []
-  (swap! clock inc)
-  @clock)
+  (swap! clock inc))
 
 (defn siteid<?
   "Returns a < relation for two site ids, that are usually MAC addresses.
@@ -43,10 +42,15 @@
   (< (.compareTo macaddra macaddrb) 0))
 
 (defn disamb<?
-  [disamb-a disamb-b]
-  (if (not= (:clock disamb-a) (:clock disamb-b))
-    (< (:clock disamb-a) (:clock disamb-b)) ;; If there is a lamport clock ordering, use that
-    (siteid<? (:siteid disamb-a) (:siteid disamb-b)))) ;; else order by MAC address
+  [{clock-l :clock siteid-l :siteid} {clock-r :clock siteid-r :siteid}]
+  (if (not= clock-l clock-r)
+    (< clock-l clock-r) ;; If there is a lamport clock ordering, use that
+    (siteid<? siteid-l siteid-r))) ;; else order by MAC address
+
+(defn- single?
+   "Returns true if the collection contains one item; else false."
+   [coll]
+   (= 1 (count coll)))
 
 ;; Compare by path and break ties (mini-nodes are siblings in same major node) with disambiguator
 (defn item<?
