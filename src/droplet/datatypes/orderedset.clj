@@ -64,9 +64,9 @@
         (nil? l) (= r 1)
         (nil? r) (= l 0)
         (= l r) (if (or (and l-is-mininode r-disamb) ;; Comparing mininode to end node or other mininode, order by disambiguator
-                        (and (= 1 (count pathl)) (= 1 (count pathr)))) ;; Finishes with two mini-siblings, order by disambiguator
+                        (and (single? pathl) (single? pathr))) ;; Finishes with two mini-siblings, order by disambiguator
                    (disamb<? l-disamb r-disamb)
-                   (recur (subvec pathl 1) (subvec pathr 1))) ;; Normal case
+                   (recur (rest pathl) (rest pathr))) ;; Normal case
         :else    (< l r)))))
 
 (defn path-len
@@ -92,8 +92,8 @@
    that is, they have the same path but differ in disambiguators"
    [pathl pathr]
    (and (= (count pathl) (count pathr))
-        (= (for [{branch :branch} pathl] branch)
-           (for [{branch :branch} pathr] branch))))
+        (= (map :branch pathl)
+           (map :branch pathr))))
 
 (defn pathnode
   "Returns a new pathnode with the given branch
@@ -110,10 +110,15 @@
    TODO check for major node, removes unconditionally right now"
    [oldpath newnode]
    ;; Filter out root node with {branch :nil}
-   (let [cleanpath (vec (filter #(:branch %) oldpath))]
-     (cond
-      (= 0 (count cleanpath)) [newnode]
-      :else (conj (conj (vec (butlast cleanpath)) (select-keys (last cleanpath) (list :branch))) newnode))))
+   (let [cleanpath (filter :branch oldpath)]
+    (if (empty? cleanpath)
+      [newnode]
+      (conj (vec (butlast cleanpath))
+            (select-keys (last cleanpath) [:branch])
+            newnode))))
+     ; (cond
+     ;  (= 0 (count cleanpath)) [newnode]
+     ;  :else (conj (conj (vec (butlast cleanpath)) (select-keys (last cleanpath) (list :branch))) newnode))))
 
 (defn disamb-for-path
   "Returns the disambiguator for the node described by the given path"
