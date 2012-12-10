@@ -1,5 +1,5 @@
 (ns droplet
-  (require clojure.set))
+  (require [droplet.lattice :as lattice]))
 
 ;; overview:
 ;;   states :: {name lattice-element}
@@ -14,69 +14,6 @@
 ;; TODO
 ;; put rules in states?
 
-;; --- LATTICES ---
-
-(defprotocol SemiLattice
-  (bottom [this] "Return the least element of the lattice")
-  (lte? [this that] "Less-than, the lattice relation")
-  (join [this that] "Find the least upper bound of two lattice elements"))
-
-(defn lt? [this that]
-  (and (not= this that)
-       (lte? this that)))
-
-(defrecord Min [val])
-(defrecord Max [val])
-
-(extend-protocol SemiLattice
-
-  java.lang.Boolean
-  (bottom [this]
-    false)
-  (lte? [this that]
-    (or (false? this)
-        (true? that)))
-  (join [this that]
-    (or this that))
-
-  Min
-  (bottom [this]
-    (->Min Double/POSITIVE_INFINITY))
-  (lte? [this that]
-    (>= (:val this) (:val that)))
-  (join [this that]
-    (->Min (min (:val this) (:val that))))
-
-  Max
-  (bottom [this]
-    (->Max Double/NEGATIVE_INFINITY))
-  (lte? [this that]
-    (<= (:val this) (:val that)))
-  (join [this that]
-    (->Max (max (:val this) (:val that))))
-
-  clojure.lang.APersistentSet
-  (bottom [this]
-    #{})
-  (lte? [this that]
-    (clojure.set/subset? this that))
-  (join [this that]
-    (cond
-     (seq? that) (into this that)
-     (set? that) (clojure.set/union this that)))
-
-  clojure.lang.APersistentMap
-  (bottom [this]
-    {})
-  (lte? [this that]
-    (every? (fn [[key val]]
-              (lte? val (get that key (bottom val))))
-            this))
-  (join [this that]
-    (cond
-     (seq? that) (merge-with join this (into {} that))
-     (map? that) (merge-with join this that))))
-
 ;; --- STATES ---
 
 ;; states is {name lattice-element}
@@ -88,7 +25,7 @@
 (defn productions [old-states new-states rule]
   (let [sources (select-keys old-states (:sources rule))
         sink ((:fun rule) sources)]
-    (update-in new-states [(:sink rule)] join sink)))
+    (update-in new-states [(:sink rule)] lattice/join sink)))
 
 ;; --- DEDUCTIVE ---
 
@@ -122,7 +59,7 @@
 
 (defn inductive-step [states deductive-rules-strata inductive-rules]
   (let [fixed-states (apply fixpoint states deductive-rules-strata)
-        new-states (into {} (for [[name state] states] [name (bottom state)]))]
+        new-states (into {} (for [[name state] states] [name (lattice/bottom state)]))]
     (reduce (partial inductions fixed-states) new-states inductive-rules)))
 
 (defn quiscience [states deductive-rules-strata inductive-rules]
@@ -137,7 +74,7 @@
   (induct name [name] (fn [states] (get states name))))
 
 (defn ephemeral [name]
-  (induct name [name] (fn [states] (bottom (get states name)))))
+  (induct name [name] (fn [states] (lattice/bottom (get states name)))))
 
 ;; --- TOP LEVEL ---
 
