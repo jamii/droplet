@@ -1,7 +1,8 @@
 (ns droplet.test
   (use clojure.test
        droplet)
-  (require [droplet.datalog :as d]))
+  (require [droplet.datalog :as d]
+           [droplet.lattice :as lattice :refer [->Max ->Min]]))
 
 ;; --- CORE --
 
@@ -53,16 +54,16 @@
 ;; like lpair in Bloom^L
 ;; not truly a lattice - join is not unique
 (defrecord Causal [vc val]
-  SemiLattice
+  lattice/BoundedSemiLattice
   (bottom [this]
     (->Causal {} nil))
   (lte? [this that]
-    (lte? (:vc this) (:vc that)))
+    (lattice/lte? (:vc this) (:vc that)))
   (join [this that]
     (cond
-     (lt? (:vc this) (:vc that)) that
-     (lt? (:vc that) (:vc this)) this
-     :else (->Causal (join (:vc this) (:vc that)) (join (:val this) (:val that))))))
+     (lattice/lt? (:vc this) (:vc that)) that
+     (lattice/lt? (:vc that) (:vc this)) this
+     :else (->Causal (lattice/join (:vc this) (:vc that)) (lattice/join (:val this) (:val that))))))
 
 (def nosql-states
   {:puts #{}
