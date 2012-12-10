@@ -204,3 +204,14 @@
     (is-str-l! three "acdref")
     (is-str-l! (join one two) "acdqezf")
     (is-str-l! (join three two) "acdqrezf")))
+
+;; Ensure that joins can happen in any order and the result will converge to the LUB regardless
+(deftest reorder-test
+  (let [orig (make-filled-oset-lattice)
+        one  (oset-remove orig "d")
+        two  (oset-insert one "b" "z")
+        three  (oset-insert two "a" "q")]
+    (is (= (strval three) (strval (join (join (join orig one) two) three))))
+    (is (= (strval three) (strval (join (join (join orig three) two) one))))
+    (is (= (strval three) (strval (join (join (join orig two) three) one))))
+    (is (= (strval three) (strval (join (join (join orig one) three) two))))))
