@@ -27,7 +27,7 @@
 
 (def clock (atom 0))
 
-(defn clock-value
+(defn- clock-value
   "Next value for this node's vector clock id
   TODO"
   []
@@ -40,7 +40,7 @@
   [macaddra macaddrb]
   (< (.compareTo macaddra macaddrb) 0))
 
-(defn disamb<?
+(defn- disamb<?
   [{clock-l :clock siteid-l :siteid} {clock-r :clock siteid-r :siteid}]
   (if (not= clock-l clock-r)
     (< clock-l clock-r) ;; If there is a lamport clock ordering, use that
@@ -68,7 +68,7 @@
                    (recur (rest pathl) (rest pathr))) ;; Normal case
         :else    (< l r)))))
 
-(defn path-len
+(defn- path-len
   "Returns the path length for this path, which is usually the number of pairs
    except for the root which has a pair but no branch"
   [path]
@@ -86,7 +86,7 @@
             {r :branch r-disamb :disamb} (first pathr)]
         (or (nil? l) (and (= l r) (recur (subvec pathl 1) (subvec pathr 1))))))))
 
-(defn mini-sibling?
+(defn- mini-sibling?
   "Returns true if the two paths are mini-siblings of each other,
    that is, they have the same path but differ in disambiguators"
    [pathl pathr]
@@ -94,7 +94,7 @@
         (= (map :branch pathl)
            (map :branch pathr))))
 
-(defn pathnode
+(defn- pathnode
   "Returns a new pathnode with the given branch
    and automatically-filled in disambiguator
 
@@ -102,7 +102,7 @@
    [branch]
    {:branch branch :disamb {:clock (clock-value) :siteid "MACADDRESS"}})
 
-(defn extend-path
+(defn- extend-path
   "Extends the given path with a new tail element in the path. Will remove any disambiguator
    in the last path node if it's a major node before extending
 
@@ -119,7 +119,7 @@
      ;  (= 0 (count cleanpath)) [newnode]
      ;  :else (conj (conj (vec (butlast cleanpath)) (select-keys (last cleanpath) (list :branch))) newnode))))
 
-(defn disamb-for-path
+(defn- disamb-for-path
   "Returns the disambiguator for the node described by the given path"
   [path]
   (:disamb (last path)))
@@ -129,7 +129,7 @@
   []
   [(pathnode nil)])
 
-(defn new-id
+(defn- new-id
   "Returns a new position id between the two given ids
 
   There must be no already-existing id between the two paths.
@@ -145,40 +145,10 @@
     (mini-sibling? pathl pathr) (conj pathl (pathnode 1)) ;; Maintain disambiguator if making a child of a mininode
     :else (extend-path pathl (pathnode 1))))
 
-;; Steps to an insert:
-;;  1) Find next item after position
-;;  2) Get path/id between pos and next
-;;  3) Insert new item with id
-;;  4) Update lamport clock
-;;
-;; NOTE: Extremely inefficient at the moment. Finding the required node is worst-case
-;;        O(n) if the node is at the end. O(n) inserts are no good.
-;;       Consider better ways to do this---might require changing the API (just inserting based
-;;         on the data means we'll always have to linear search for the right node)
-;;       ideas...?
-;;
-;; Same goes for remove
-(defn oset-insert
-  "Inserts a new item in the ordered set after the specified item. If nil is supplied,
-  inserts at the beginning.
-  Returns the new ordered set"
-  [{oset :oset :as oset-lattice} prev-data data]
-  (let [[before after & _] (drop-while #(not= (:val %) prev-data) oset)
-        after (if before after (first oset))
-        path (new-id before after)]
-    (if (or (and (nil? before) (not (nil? prev-data)))
-            (= (:val after) data))
-      oset-lattice ;; If we didn't find the previous term (but it was specified) ignore
-      (-> oset-lattice ;; Insert item and update item in vc
-        (update-in [:oset] conj {:path path :val data})
-        (update-in [:vc] #(join % {path (->Max (:clock (disamb-for-path path)))}))))))
-
-(defn oset-remove
-  "Removes the desired item from this set and returns it"
-  [{oset :oset :as oset-lattice} item]
-  (if-let [found (first (filter #(= (:val %) item) oset))]
-    (assoc oset-lattice :oset (disj oset found))
-    oset-lattice))
+(defn- find-node
+  "Finds the given node w/ linear search by comparing the values"
+  [{oset :oset} tofind]
+  (first (drop-while #(not= (:val %) tofind) oset)))
 
 (defn ordered-set
   []
@@ -194,31 +164,95 @@
   [seqa seqb]
   (filter #(not (in seqb %)) seqa))
 
-(defn removed-set
-  [{oset :oset vc :vc}]
+(defn- removed-set
+  [oset vc]
   (let [existing-paths (map :path oset)]
     (set (seq-diff (map first vc) existing-paths))))
 
-;; Not a true lattice. join is not unique :-/
-(defrecord OrderedSet [oset vc]
-  BoundedSemiLattice
-  (bottom [this]
-    (->OrderedSet (ordered-set) (kvs/->Causal {} nil)))
+(defprotocol IInsertAfter
+  (insert-after [this previous new-elem] "Insert a new element after the desired element. If nil is supplied,
+                                          inserts at the beginning."))
 
-  (lte? [this that]
-    (let [this-removed (removed-set this)
-          that-removed (removed-set that)]
-      (and (lte? (:vc this) (:vc that))
+;; Steps to an insert:
+;;  1) Find next item after position
+;;  2) Get path/id between pos and next
+;;  3) Insert new item with id
+;;  4) Update lamport clock
+;;
+;; NOTE: Extremely inefficient at the moment. Finding the required node is worst-case
+;;        O(n) if the node is at the end. O(n) inserts are no good.
+;;       Consider better ways to do this---might require changing the API (just inserting based
+;;         on the data means we'll always have to linear search for the right node)
+;;       ideas...?
+;;
+;; Same goes for remove
+
+
+;; Provide a collection interface implementation for the ordered-set
+;;  so it can be used as a regular collection
+
+;; Not a true lattice. join is not unique :-/
+(deftype OrderedSet [oset vc]
+  BoundedSemiLattice
+  (bottom [self]
+    (OrderedSet. (ordered-set) (kvs/->Causal {} nil)))
+
+  (lte? [self that]
+    (let [this-removed (removed-set oset vc)
+          that-removed (removed-set (.oset that) (.vc that))]
+      (and (lte? vc (.vc that))
            (clojure.set/subset? this-removed that-removed))))
 
-  (join [this that]
-    (let [new-in-that (set (seq-diff (:oset that) (:vc this)))
-          vc-keys (keys (:vc that))
+  (join [self that]
+    (let [new-in-that (set (seq-diff (.oset that) vc))
+          vc-keys (keys (.vc that))
           removed-in-this (set (filter
                                 #(in vc-keys (:path %))
-                                (clojure.set/difference (:oset this) (:oset that))))
+                                (clojure.set/difference oset (.oset that))))
            updated-set (into (ordered-set)
                              (clojure.set/difference
-                              (clojure.set/union (:oset this) new-in-that)
+                              (clojure.set/union oset new-in-that)
                                removed-in-this))]
-      (->OrderedSet updated-set (join (:vc this) (:vc that))))))
+      (OrderedSet. updated-set (join vc (.vc that)))))
+
+  IInsertAfter
+  (insert-after [self prev-data data]
+    (let [[before after & _] (drop-while #(not= (:val %) prev-data) oset)
+        after (if before after (first oset))
+        path (new-id before after)]
+    (if (or (and (nil? before) (not (nil? prev-data)))
+            (= (:val after) data))
+      self ;; If we didn't find the previous term (but it was specified) ignore
+      (OrderedSet. (conj oset {:path path :val data})
+                   (join vc {path (->Max (:clock (disamb-for-path path)))})))))
+
+  clojure.lang.IPersistentCollection
+  (seq [self] (seq (map :val oset)))
+  (cons [self o] (insert-after self nil o))
+  (empty [self] (empty oset))
+  (equiv [self o] false) ;; TODO
+  (count [self] (count (seq self))) ;; O(n)
+
+  clojure.lang.ISeq
+  (first [self] (:val (first oset)))
+  (next [self]  (map :val (next oset)))
+  (more [self]  (map :val (rest oset)))
+
+  clojure.lang.IPersistentSet
+  (disjoin [self item] (OrderedSet. (if-let [found (first (filter #(= (:val %) item) oset))]
+                                      (disj oset found)
+                                      oset)
+                                    vc))
+  (contains [self item] (seq (find-node self item))) ;; NOTE operates in linear time---breaks implicit contract in clojure docs
+  (get [self item] nil) ;; TODO
+
+  Object
+  (toString [self] (apply str (interpose " " (map :val oset)))))
+
+(defmethod print-method OrderedSet [o w]
+        (.write w (.toString o)))
+
+(defn ordered-set-lattice
+  "Returns a new ordered set lattice"
+  []
+  (OrderedSet. (ordered-set) (kvs/->Causal {} nil)))
