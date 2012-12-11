@@ -1,6 +1,5 @@
 (ns droplet.test.lattice.ordered-set
-  (require clojure.set
-           [droplet.test :as kvs])
+  (require clojure.set)
   (use droplet
        droplet.lattice
        droplet.lattice.ordered-set
@@ -28,10 +27,10 @@
   (is (= (apply str (set-as-values oset)) s))
   oset)
 
-(defn is-str-l!
-  [{oset :oset :as oset-lattice} s]
-  (is (= (apply str (set-as-values oset)) s))
-  oset-lattice)
+(defn is-str-l! 
+  [oset s]
+  (is (= (apply str oset) s))
+  oset)
 
 (defn is-contents!
   [oset val]
@@ -39,8 +38,8 @@
   oset)
 
 (defn strval
-  [{oset :oset}]
-  (apply str (set-as-values oset)))
+  [oset]
+  (apply str oset))
 
 (defn node
   ([branches]
@@ -62,13 +61,13 @@
 
 (defn make-filled-oset-lattice
   []
-  (-> (->OrderedSet (ordered-set) (kvs/->Causal {} nil))
-    (oset-insert nil "c")
-    (oset-insert nil "a")
-    (oset-insert "a" "b")
-    (oset-insert "c" "d")
-    (oset-insert "d" "e")
-    (oset-insert "e" "f")))
+  (-> (ordered-set-lattice)
+    (insert-after nil "c")
+    (insert-after nil "a")
+    (insert-after "a" "b")
+    (insert-after "c" "d")
+    (insert-after "d" "e")
+    (insert-after "e" "f")))
 
 ;; Internal tests of ordering and tree functions
 
@@ -129,34 +128,34 @@
 ;; Tests on lattice operations themselves
 (deftest operation-test
   (-> (make-filled-oset-lattice)
-    (oset-insert "a" "m")
+    (insert-after "a" "m")
     (is-str-l! "ambcdef")
-    (oset-insert "d" "q")
+    (insert-after "d" "q")
     (is-str-l! "ambcdqef")
-    (oset-insert "q" "z")
+    (insert-after "q" "z")
     (is-str-l! "ambcdqzef")
-    (oset-insert "f" "l")
+    (insert-after "f" "l")
     (is-str-l! "ambcdqzefl")
-    (oset-insert "f" "l")
+    (insert-after "f" "l")
     (is-str-l! "ambcdqzefl")
-    (oset-insert "q" "uuuu")
+    (insert-after "q" "uuuu")
     (is-str-l! "ambcdquuuuzefl")
-    (oset-insert "notfound" "notinserted")
+    (insert-after "notfound" "notinserted")
     (is-str-l! "ambcdquuuuzefl")
-    (oset-remove "m")
+    (disj "m")
     (is-str-l! "abcdquuuuzefl")
-    (oset-remove "uuuu")
+    (disj "uuuu")
     (is-str-l! "abcdqzefl")
-    (oset-remove "f")
+    (disj "f")
     (is-str-l! "abcdqzel")
-    (oset-remove "s")
+    (disj "s")
     (is-str-l! "abcdqzel")))
 
 (deftest lattice-test
   (let [a (make-filled-oset-lattice)
-        b (oset-insert a "f" "z") ;; Adds z after f
-        c (oset-insert a "c" "l") ;; Adds l after c
-        d (oset-remove a "c")]    ;; Removes
+        b (insert-after a "f" "z") ;; Adds z after f
+        c (insert-after a "c" "l") ;; Adds l after c
+        d (disj a "c")]    ;; Removes
     (is-str-l! (join a b) "abcdefz")
     (is-str-l! (join a c) "abcldef")
     (is-str-l! (join b c) "abcldefz")
@@ -175,32 +174,43 @@
 
 (deftest mininode-test
   (let [orig (make-filled-oset-lattice)
-        peer1 (oset-insert orig "c" "j")
-        peer2 (oset-insert orig "c" "k")
+        peer1 (insert-after orig "c" "j")
+        peer2 (insert-after orig "c" "k")
         merged (join peer1 peer2)]
         ;; j and k should share mini-nodes, but j < k since lamport clock ordering
         ;;   is used to order them
       (is-str-l! merged "abcjkdef")
-      (is-str-l! (oset-insert merged "c" "l") "abcljkdef")
-      (is-str-l! (oset-insert merged "k" "l") "abcjkldef")
+      (is-str-l! (insert-after merged "c" "l") "abcljkdef")
+      (is-str-l! (insert-after merged "k" "l") "abcjkldef")
       ;; Inserting l between j and k will create a child of the j mininode and it should be ordered between
-      (is-str-l! (oset-insert merged "j" "l") "abcjlkdef")))
+      (is-str-l! (insert-after merged "j" "l") "abcjlkdef")))
 
 (deftest nested-mininode-test
-  (let [orig (-> (->OrderedSet (ordered-set) (kvs/->Causal {} nil))
-                (oset-insert nil "c")
-                (oset-insert nil "a")
-                (oset-insert "c" "f"))
+  (let [orig (-> (->OrderedSet (ordered-set) {})
+                (insert-after nil "c")
+                (insert-after nil "a")
+                (insert-after "c" "f"))
         one (-> orig
-                (oset-insert "c" "e")
-                (oset-insert "c" "d"))
+                (insert-after "c" "e")
+                (insert-after "c" "d"))
         two (-> orig
-                (oset-insert "c" "z")
-                (oset-insert "c" "q"))
-        three (oset-insert one "d" "r")]
+                (insert-after "c" "z")
+                (insert-after "c" "q"))
+        three (insert-after one "d" "r")]
     (is-str-l! orig "acf")
     (is-str-l! one "acdef")
     (is-str-l! two "acqzf")
     (is-str-l! three "acdref")
     (is-str-l! (join one two) "acdqezf")
     (is-str-l! (join three two) "acdqrezf")))
+
+;; Ensure that joins can happen in any order and the result will converge to the LUB regardless
+(deftest reorder-test
+  (let [orig (make-filled-oset-lattice)
+        one  (disj orig "d")
+        two  (insert-after one "b" "z")
+        three  (insert-after two "a" "q")]
+    (is (= (strval three) (strval (join (join (join orig one) two) three))))
+    (is (= (strval three) (strval (join (join (join orig three) two) one))))
+    (is (= (strval three) (strval (join (join (join orig two) three) one))))
+    (is (= (strval three) (strval (join (join (join orig one) three) two))))))
