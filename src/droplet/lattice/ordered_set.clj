@@ -246,10 +246,10 @@
   (get [self item] nil) ;; TODO
 
   Object
-  (toString [self] (apply str (interpose " " (map :val oset)))))
+  (toString [self] (str oset " " vc)))
 
 (defmethod print-method OrderedSet [o w]
-        (.write w (.toString o)))
+        (.write w (apply str (interpose " " (map :val (.oset o))))))
 
 (defn ordered-set-lattice
   "Returns a new ordered set lattice"
