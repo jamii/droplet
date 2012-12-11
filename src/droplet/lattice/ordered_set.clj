@@ -1,6 +1,5 @@
 (ns droplet.lattice.ordered-set
   (require clojure.set
-           [droplet.datalog :as d]
            [droplet.test :as kvs])
   (use droplet
        droplet.lattice

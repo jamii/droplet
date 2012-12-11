@@ -46,9 +46,7 @@
   (lte? [this that]
     (clojure.set/subset? this that))
   (join [this that]
-    (cond
-     (seq? that) (into this that)
-     (set? that) (clojure.set/union this that)))
+    (clojure.set/union this that))
 
   clojure.lang.APersistentMap
   (bottom [this]
@@ -58,6 +56,4 @@
               (lte? val (get that key (bottom val))))
             this))
   (join [this that]
-    (cond
-     (seq? that) (merge-with join this (into {} that))
-     (map? that) (merge-with join this that))))
+    (merge-with join this that)))

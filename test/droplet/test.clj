@@ -1,8 +1,9 @@
 (ns droplet.test
-  (use clojure.test
-       droplet)
-  (require [droplet.datalog :as d]
-           [droplet.lattice :as lattice :refer [->Max ->Min]]))
+  (use droplet
+       droplet.runtime
+       droplet.flow
+       droplet.lattice
+       clojure.test))
 
 ;; --- CORE --
 
@@ -13,11 +14,11 @@
    :path #{}})
 
 (def path-rules
-  [(d/deduct :path [a b]
-             :edge [?a ?b])
-   (d/deduct :path [a c]
-             :edge [?a ?b]
-             :path [?b ?c])])
+  [(deduct (flow (in? :edge [?a ?b])
+                 (in! :path [a b])))
+   (deduct (flow (in? :edge [?a ?b])
+                 (in? :path [?b ?c])
+                 (in! :path [a c])))])
 
 (deftest path-test
   (is (= #{[1 2] [1 3] [2 3] [3 3] [4 4] [5 4] [4 5] [5 5]}
@@ -28,16 +29,16 @@
 (def growth-states path-states)
 
 (def deductive-growth-rules
-  [(d/deduct :path [a b]
-             :edge [?a ?b])
-   (d/deduct :path [a c]
-             :edge [?a ?b]
-             :edge [?b ?c])])
+  [(deduct (flow (in? :edge [?a ?b])
+                 (in! :path [a b])))
+   (deduct (flow (in? :edge [?a ?b])
+                 (in? :edge [?b ?c])
+                 (in! :path [a c])))])
 
 (def inductive-growth-rules
   [(ephemeral :path)
-   (d/induct :edge [a b]
-             :path [?a ?b])])
+   (induct (flow (in? :path [?a ?b])
+                 (in! :edge [a b])))])
 
 (deftest growth-test
   (is (= #{[1 2] [1 3] [2 3] [3 3] [4 4] [5 4] [4 5] [5 5]}
@@ -54,16 +55,16 @@
 ;; like lpair in Bloom^L
 ;; not truly a lattice - join is not unique
 (defrecord Causal [vc val]
-  lattice/BoundedSemiLattice
+  BoundedSemiLattice
   (bottom [this]
     (->Causal {} nil))
   (lte? [this that]
-    (lattice/lte? (:vc this) (:vc that)))
+    (lte? (:vc this) (:vc that)))
   (join [this that]
     (cond
-     (lattice/lt? (:vc this) (:vc that)) that
-     (lattice/lt? (:vc that) (:vc this)) this
-     :else (->Causal (lattice/join (:vc this) (:vc that)) (lattice/join (:val this) (:val that))))))
+     (lt? (:vc this) (:vc that)) that
+     (lt? (:vc that) (:vc this)) this
+     :else (->Causal (join (:vc this) (:vc that)) (join (:val this) (:val that))))))
 
 (def nosql-states
   {:puts #{}
@@ -71,9 +72,8 @@
 
 (def nosql-rules
   [(ephemeral :puts)
-   (persistent :store)
-   (d/deduct :store [key (->Causal vc val)]
-             :puts {:key ?key :vc ?vc :val ?val})])
+   (deduct (flow (in? :puts {:key ?key :vc ?vc :val ?val})
+                 (in! :store [key (->Causal vc val)])))])
 
 (defn new-nosql []
   (reactive nosql-states nosql-rules))
