@@ -111,8 +111,8 @@
 (strucjure/defview +flow+
   [& ((strucjure/zero-or-more +source+) ?sources) & ((strucjure/zero-or-more +sink+) ?sinks)]
   (let [source (apply join? sources)
-        sink (with-scope (apply do! sinks) (scope source))]
-    (eval `(->Flow ~source ~sink)))) ;; smell :(
+        sink (eval (with-scope (apply do! sinks) (scope source)))] ;; eval smell :(
+    (->Flow source sink)))
 
 (defn flow [& elems]
   (strucjure/run +flow+ elems))
