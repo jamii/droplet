@@ -1,6 +1,5 @@
 (ns droplet.test.lattice.ordered-set
-  (require clojure.set
-           [droplet.test :as kvs])
+  (require clojure.set)
   (use droplet
        droplet.lattice
        droplet.lattice.ordered-set
@@ -187,7 +186,7 @@
       (is-str-l! (insert-after merged "j" "l") "abcjlkdef")))
 
 (deftest nested-mininode-test
-  (let [orig (-> (->OrderedSet (ordered-set) (kvs/->Causal {} nil))
+  (let [orig (-> (->OrderedSet (ordered-set) {})
                 (insert-after nil "c")
                 (insert-after nil "a")
                 (insert-after "c" "f"))

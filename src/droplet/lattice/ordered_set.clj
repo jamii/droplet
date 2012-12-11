@@ -1,6 +1,5 @@
 (ns droplet.lattice.ordered-set
-  (require clojure.set
-           [droplet.test :as kvs])
+  (require clojure.set)
   (use droplet
        droplet.lattice
        clojure.pprint))
@@ -195,7 +194,7 @@
 (deftype OrderedSet [oset vc]
   BoundedSemiLattice
   (bottom [self]
-    (OrderedSet. (ordered-set) (kvs/->Causal {} nil)))
+    (OrderedSet. (ordered-set) {}))
 
   (lte? [self that]
     (let [this-removed (removed-set oset vc)
@@ -255,4 +254,4 @@
 (defn ordered-set-lattice
   "Returns a new ordered set lattice"
   []
-  (OrderedSet. (ordered-set) (kvs/->Causal {} nil)))
+  (OrderedSet. (ordered-set) {}))
