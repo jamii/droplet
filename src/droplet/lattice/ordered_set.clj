@@ -1,8 +1,7 @@
 (ns droplet.lattice.ordered-set
   (require clojure.set)
   (use droplet
-       droplet.lattice
-       clojure.pprint))
+       droplet.lattice))
 
 ;; Provides an ordered set lattice inspired by Treedoc:
 ;;  http://hal.inria.fr/inria-00445975
@@ -169,7 +168,7 @@
     (set (seq-diff (map first vc) existing-paths))))
 
 (defprotocol IInsertAfter
-  (insert-after [this previous new-elem] "Insert a new element after the desired element. If nil is supplied,
+  (insert-after [self previous new-elem] "Insert a new element after the desired element. If nil is supplied,
                                           inserts at the beginning."))
 
 ;; Steps to an insert:
