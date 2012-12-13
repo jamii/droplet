@@ -6,8 +6,9 @@
      clojure.test))
 
 ;; Test follows Fig. 14 in full CRDT paper
-(deftest test-orset
-  (let [a (or-set-tombs)
+(defn test-orset-api
+  [orig-set]
+  (let [a  orig-set
         b  a
         c  a
         b (conj b :a)
@@ -23,8 +24,15 @@
     (is (.m a) {:a #{1}})
     (is (.m b) {:a #{1}})
     (is (.m c) {:a #{1}})
+    (list a b c)))
+
+(deftest test-orset
+  (let [[a b c] (test-orset-api (or-set-tombs))]
     (is (.t a) {:a #{2}})
     (is (.t b) {})
     (is (.t c) {:a #{2}})
     (let [b (join b a)]
       (is (.t b) {:a #{2}}))))
+
+(deftest test-orset-vv
+  (test-orset-api (or-set-tombless)))
