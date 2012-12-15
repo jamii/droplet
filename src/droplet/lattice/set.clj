@@ -13,27 +13,26 @@
   []
   (swap! clock inc))
 
-(defn site-id
-  []
+(defn site-id []
   "MACADDR") ;; TODO
 
 (defn assoc-set
   "Assoc'es an item to this multimap"
   [mmap k v]
-  (merge-with union mmap {k v}))
+  (update-in mmap [k] union v))
+  ; (merge-with union mmap {k v}))
 
 (defn clean-empty
   "Removes entries from a map that has
   values that are empty sets"
   [mmap]
-  (select-keys mmap (for [[k v] mmap :when (seq v)] k)))
+  (into {} (filter #(seq (val %)) mmap)))
 
 (defn dissoc-tombs
   "Remove tombstone values for the given items, and if there are
   no more identifiers for an item, remove that from the set"
   [mmap tombs]
-  (let [without (merge-with difference mmap tombs)]
-    (clean-empty without)))
+  (clean-empty (merge-with difference mmap tombs)))
 
 (defn version-lte?
   "Determines, given two version vector of unique item ids,
@@ -47,43 +46,41 @@
 
 (defn merge-with-operation
   [mmap vv operation]
-    (clean-empty (into {} (map (fn [[k v]]
-                    [k (operation v vv)])
-                  mmap))))
+  (clean-empty (into {} (for [[k v] mmap] [k (operation v vv)]))))
 
 (defn remove-versions
   "Removes entries in the desired map of {val #{versions}}
   given a list of versions"
-  ([mmap vv]
-    (merge-with-operation mmap vv difference))
-  ([mmap vv operation]
-    (merge-with-operation mmap vv operation)))
+  [mmap vv]
+  (merge-with-operation mmap vv difference))
 
 ;; ORSet with tombstones
-(deftype ORSet [mmap t]
+;; mmap is a map of {key #{uniqueid}}
+;; tombstones is a list of unique ids that were removed from the set
+(deftype ORSet [mmap tombstones]
   BoundedSemiLattice
   (bottom [this]
     (ORSet. {} {}))
   (lte? [this that]
-    (and (subset? (merge-with union mmap t) (merge-with union (.mmap that) (.t that)))
-         (subset? t (.t that))))
+    (and (subset? (merge-with union mmap tombstones) (merge-with union (.mmap that) (.tombstones that)))
+         (subset? tombstones (.tombstones that))))
   (join [this that]
-    (ORSet. (merge-with union (dissoc-tombs mmap (.t that)) (dissoc-tombs (.mmap that) t))
-           (merge-with union t (.t that))))
+    (ORSet. (merge-with union (dissoc-tombs mmap (.tombstones that)) (dissoc-tombs (.mmap that) tombstones))
+           (merge-with union tombstones (.tombstones that))))
 
   clojure.lang.IPersistentSet
-  (contains [this elem] (contains? mmap))
+  (contains [this elem] (contains? mmap elem))
   (disjoin [this elem]
     (let [tombs (get mmap elem)]
-      (ORSet. (dissoc mmap elem) (assoc-set t elem tombs))))
+      (ORSet. (dissoc mmap elem) (assoc-set tombstones elem tombs))))
   (get [this item] (get mmap item))
 
 
   clojure.lang.IPersistentCollection
-  (seq [this] (seq (keys mmap)))
+  (seq [this] (keys mmap))
   (cons [this elem]  
-    (ORSet. (assoc-set mmap elem #{(clock-value)}) t))
-  (empty [this] (empty mmap))
+    (ORSet. (assoc-set mmap elem #{(clock-value)}) tombstones))
+  (empty [this] (ORSet. {} {}))
   (equiv [this other] (= mmap (.mmap other)))
   (count [this] (count mmap)))
 
@@ -93,22 +90,28 @@
   []
   (ORSet. {} {}))
 
+(defn- removed-from-orset
+  "Returns a list of items that are in the second arg
+  but not in the list of keys of the first"
+  [vv mmap]
+  difference mmap (apply union (keys vv)))
+
 ;; ORSet without tombstones
-;; Uses version vectors
+;; mmap is a map of {key #{uniqueid}}
+;; vv is a version vector of {uniqueid ->Max}
 (deftype ORSetVector [mmap vv]
   BoundedSemiLattice
   (bottom [this]
     (ORSetVector. {} #{}))
   (lte? [this that]
-    (let [removed #(difference %2 (apply union (keys %1)))
-          this-removed (removed mmap vv)
-          that-removed (removed (.mmap that) (.vv that))]
+    (let [this-removed (removed-from-orset mmap vv)
+          that-removed (removed-from-orset (.mmap that) (.vv that))]
       (and (version-lte? vv (.vv that))
            (subset? this-removed that-removed))))
   (join [this that]
     (let [that-added      (remove-versions (.mmap that) vv)
           only-in-this    (clean-empty (merge-with difference mmap (.mmap that)))
-          removed-in-that (remove-versions only-in-this (.vv that) intersection)]
+          removed-in-that (merge-with-operation only-in-this (.vv that) intersection)]
       (ORSetVector. (merge-with union that-added (merge-with difference mmap removed-in-that))
                     (union vv (.vv that)))))
 

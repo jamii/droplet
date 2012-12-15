@@ -28,11 +28,11 @@
 
 (deftest test-orset
   (let [[a b c] (test-orset-api (or-set-tombs))]
-    (is (.t a) {:a #{2}})
-    (is (.t b) {})
-    (is (.t c) {:a #{2}})
+    (is (.tombstones a) {:a #{2}})
+    (is (.tombstones b) {})
+    (is (.tombstones c) {:a #{2}})
     (let [b (join b a)]
-      (is (.t b) {:a #{2}}))))
+      (is (.tombstones b) {:a #{2}}))))
 
 (deftest test-orset-vv
   (test-orset-api (or-set-tombless)))
