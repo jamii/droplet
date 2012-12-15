@@ -21,9 +21,9 @@
     (is (seq a) '(:a))
     (is (seq b) '(:a))
     (is (seq c) '(:a))
-    (is (.m a) {:a #{1}})
-    (is (.m b) {:a #{1}})
-    (is (.m c) {:a #{1}})
+    (is (.mmap a) {:a #{1}})
+    (is (.mmap b) {:a #{1}})
+    (is (.mmap c) {:a #{1}})
     (list a b c)))
 
 (deftest test-orset
