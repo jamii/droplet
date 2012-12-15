@@ -1,7 +1,6 @@
 (ns droplet.lattice.set
-  (require clojure.set)
-  (use droplet
-       droplet.lattice))
+  (require [clojure.set :refer [union subset? difference intersection]]
+           [droplet.lattice :refer [join BoundedSemiLattice]]))
 
 ;; Implements an observed-remove set (OR-set).
 ;; Supports adding and removing items to the set.
@@ -21,7 +20,7 @@
 (defn assoc-set
   "Assoc'es an item to this multimap"
   [mmap k v]
-  (merge-with clojure.set/union mmap {k v}))
+  (merge-with union mmap {k v}))
 
 (defn clean-empty
   "Removes entries from a map that has
@@ -33,14 +32,14 @@
   "Remove tombstone values for the given items, and if there are
   no more identifiers for an item, remove that from the set"
   [mmap tombs]
-  (let [without (merge-with clojure.set/difference mmap tombs)]
+  (let [without (merge-with difference mmap tombs)]
     (clean-empty without)))
 
 (defn version-lte?
   "Determines, given two version vector of unique item ids,
   if the latter is entirely equal or greater than the former"
   [vv-one vv-two]
-  (let [diff (seq (clojure.set/difference vv-two vv-one))
+  (let [diff (seq (difference vv-two vv-one))
         biggest (apply max vv-one)]
     (if (seq diff)
       (every? #(> % biggest) diff)
@@ -56,7 +55,7 @@
   "Removes entries in the desired map of {val #{versions}}
   given a list of versions"
   ([mmap vv]
-    (merge-with-operation mmap vv clojure.set/difference))
+    (merge-with-operation mmap vv difference))
   ([mmap vv operation]
     (merge-with-operation mmap vv operation)))
 
@@ -66,11 +65,11 @@
   (bottom [this]
     (ORSet. {} {}))
   (lte? [this that]
-    (and (clojure.set/subset? (merge-with clojure.set/union mmap t) (merge-with clojure.set/union (.mmap that) (.t that)))
-         (clojure.set/subset? t (.t that))))
+    (and (subset? (merge-with union mmap t) (merge-with union (.mmap that) (.t that)))
+         (subset? t (.t that))))
   (join [this that]
-    (ORSet. (merge-with clojure.set/union (dissoc-tombs mmap (.t that)) (dissoc-tombs (.mmap that) t))
-           (merge-with clojure.set/union t (.t that))))
+    (ORSet. (merge-with union (dissoc-tombs mmap (.t that)) (dissoc-tombs (.mmap that) t))
+           (merge-with union t (.t that))))
 
   clojure.lang.IPersistentSet
   (contains [this elem] (contains? mmap))
@@ -101,17 +100,17 @@
   (bottom [this]
     (ORSetVector. {} #{}))
   (lte? [this that]
-    (let [removed #(clojure.set/difference %2 (apply clojure.set/union (keys %1)))
+    (let [removed #(difference %2 (apply union (keys %1)))
           this-removed (removed mmap vv)
           that-removed (removed (.mmap that) (.vv that))]
       (and (version-lte? vv (.vv that))
-           (clojure.set/subset? this-removed that-removed))))
+           (subset? this-removed that-removed))))
   (join [this that]
     (let [that-added      (remove-versions (.mmap that) vv)
-          only-in-this    (clean-empty (merge-with clojure.set/difference mmap (.mmap that)))
-          removed-in-that (remove-versions only-in-this (.vv that) clojure.set/intersection)]
-      (ORSetVector. (merge-with clojure.set/union that-added (merge-with clojure.set/difference mmap removed-in-that))
-                    (clojure.set/union vv (.vv that)))))
+          only-in-this    (clean-empty (merge-with difference mmap (.mmap that)))
+          removed-in-that (remove-versions only-in-this (.vv that) intersection)]
+      (ORSetVector. (merge-with union that-added (merge-with difference mmap removed-in-that))
+                    (union vv (.vv that)))))
 
   clojure.lang.IPersistentSet
   (contains [this elem] (contains? mmap))
