@@ -225,16 +225,16 @@
                    (join vc {path (->Max (:clock (disamb-for-path path)))})))))
 
   clojure.lang.IPersistentCollection
-  (seq [self] (seq (map :val oset)))
-  (cons [self o] (insert-after self nil o))
-  (empty [self] (empty oset))
-  (equiv [self o] false) ;; TODO
-  (count [self] (count (seq self))) ;; O(n)
+  (seq [this] (seq (map :val oset)))
+  (cons [this o] (insert-after this nil o))
+  (empty [this] (empty oset))
+  (equiv [this o] false) ;; TODO
+  (count [this] (count (seq this))) ;; O(n)
 
   clojure.lang.ISeq
-  (first [self] (:val (first oset)))
-  (next [self]  (map :val (next oset)))
-  (more [self]  (map :val (rest oset)))
+  (first [this] (:val (first oset)))
+  (next [this]  (map :val (next oset)))
+  (more [this]  (map :val (rest oset)))
 
   clojure.lang.IPersistentSet
   (disjoin [self item] (OrderedSet. (if-let [found (first (filter #(= (:val %) item) oset))]

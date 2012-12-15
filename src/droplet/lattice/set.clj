@@ -63,30 +63,30 @@
 ;; ORSet with tombstones
 (deftype ORSet [mmap t]
   BoundedSemiLattice
-  (bottom [self]
+  (bottom [this]
     (ORSet. {} {}))
-  (lte? [self that]
+  (lte? [this that]
     (and (clojure.set/subset? (merge-with clojure.set/union mmap t) (merge-with clojure.set/union (.mmap that) (.t that)))
          (clojure.set/subset? t (.t that))))
-  (join [self that]
+  (join [this that]
     (ORSet. (merge-with clojure.set/union (dissoc-tombs mmap (.t that)) (dissoc-tombs (.mmap that) t))
            (merge-with clojure.set/union t (.t that))))
 
   clojure.lang.IPersistentSet
-  (contains [self elem] (contains? mmap))
-  (disjoin [self elem]
+  (contains [this elem] (contains? mmap))
+  (disjoin [this elem]
     (let [tombs (get mmap elem)]
       (ORSet. (dissoc mmap elem) (assoc-set t elem tombs))))
-  (get [self item] (get mmap item))
+  (get [this item] (get mmap item))
 
 
   clojure.lang.IPersistentCollection
-  (seq [self] (seq (keys mmap)))
-  (cons [self elem]  
+  (seq [this] (seq (keys mmap)))
+  (cons [this elem]  
     (ORSet. (assoc-set mmap elem #{(clock-value)}) t))
-  (empty [self] (empty mmap))
-  (equiv [self other] (= mmap (.mmap other)))
-  (count [self] (count mmap)))
+  (empty [this] (empty mmap))
+  (equiv [this other] (= mmap (.mmap other)))
+  (count [this] (count mmap)))
 
 (defn or-set-tombs
   "Returns a ORSET CRDT that implements the standard
@@ -98,15 +98,15 @@
 ;; Uses version vectors
 (deftype ORSetVector [mmap vv]
   BoundedSemiLattice
-  (bottom [self]
+  (bottom [this]
     (ORSetVector. {} #{}))
-  (lte? [self that]
+  (lte? [this that]
     (let [removed #(clojure.set/difference %2 (apply clojure.set/union (keys %1)))
-          self-removed (removed mmap vv)
+          this-removed (removed mmap vv)
           that-removed (removed (.mmap that) (.vv that))]
       (and (version-lte? vv (.vv that))
-           (clojure.set/subset? self-removed that-removed))))
-  (join [self that]
+           (clojure.set/subset? this-removed that-removed))))
+  (join [this that]
     (let [that-added      (remove-versions (.mmap that) vv)
           only-in-this    (clean-empty (merge-with clojure.set/difference mmap (.mmap that)))
           removed-in-that (remove-versions only-in-this (.vv that) clojure.set/intersection)]
@@ -114,21 +114,21 @@
                     (clojure.set/union vv (.vv that)))))
 
   clojure.lang.IPersistentSet
-  (contains [self elem] (contains? mmap))
-  (disjoin [self elem]
+  (contains [this elem] (contains? mmap))
+  (disjoin [this elem]
     (ORSetVector. (dissoc mmap elem) vv))
-  (get [self item] (get mmap item))
+  (get [this item] (get mmap item))
 
 
   clojure.lang.IPersistentCollection
-  (seq [self] (seq (keys mmap)))
-  (cons [self elem]
+  (seq [this] (seq (keys mmap)))
+  (cons [this elem]
     (let [t (clock-value)]
       (ORSetVector. (assoc-set mmap elem #{t})
                     (conj vv t))))
-  (empty [self] (empty mmap))
-  (equiv [self other] (= mmap (.mmap other)))
-  (count [self] (count mmap)))
+  (empty [this] (empty mmap))
+  (equiv [this other] (= mmap (.mmap other)))
+  (count [this] (count mmap)))
 
 (defn or-set-tombless
   "Returns an ORSet implemented without tombstones"
