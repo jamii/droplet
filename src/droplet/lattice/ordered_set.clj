@@ -168,7 +168,7 @@
     (set (seq-diff (map first vc) existing-paths))))
 
 (defprotocol IInsertAfter
-  (insert-after [self previous new-elem] "Insert a new element after the desired element. If nil is supplied,
+  (insert-after [this previous new-elem] "Insert a new element after the desired element. If nil is supplied,
                                           inserts at the beginning."))
 
 ;; Steps to an insert:
@@ -192,16 +192,16 @@
 ;; Not a true lattice. join is not unique :-/
 (deftype OrderedSet [oset vc]
   BoundedSemiLattice
-  (bottom [self]
+  (bottom [this]
     (OrderedSet. (ordered-set) {}))
 
-  (lte? [self that]
+  (lte? [this that]
     (let [this-removed (removed-set oset vc)
           that-removed (removed-set (.oset that) (.vc that))]
       (and (lte? vc (.vc that))
            (clojure.set/subset? this-removed that-removed))))
 
-  (join [self that]
+  (join [this that]
     (let [new-in-that (set (seq-diff (.oset that) vc))
           vc-keys (keys (.vc that))
           removed-in-this (set (filter
@@ -214,13 +214,13 @@
       (OrderedSet. updated-set (join vc (.vc that)))))
 
   IInsertAfter
-  (insert-after [self prev-data data]
+  (insert-after [this prev-data data]
     (let [[before after & _] (drop-while #(not= (:val %) prev-data) oset)
         after (if before after (first oset))
         path (new-id before after)]
     (if (or (and (nil? before) (not (nil? prev-data)))
             (= (:val after) data))
-      self ;; If we didn't find the previous term (but it was specified) ignore
+      this ;; If we didn't find the previous term (but it was specified) ignore
       (OrderedSet. (conj oset {:path path :val data})
                    (join vc {path (->Max (:clock (disamb-for-path path)))})))))
 
@@ -237,15 +237,15 @@
   (more [this]  (map :val (rest oset)))
 
   clojure.lang.IPersistentSet
-  (disjoin [self item] (OrderedSet. (if-let [found (first (filter #(= (:val %) item) oset))]
+  (disjoin [this item] (OrderedSet. (if-let [found (first (filter #(= (:val %) item) oset))]
                                       (disj oset found)
                                       oset)
                                     vc))
-  (contains [self item] (seq (find-node self item))) ;; NOTE operates in linear time---breaks implicit contract in clojure docs
-  (get [self item] nil) ;; TODO
+  (contains [this item] (seq (find-node this item))) ;; NOTE operates in linear time---breaks implicit contract in clojure docs
+  (get [this item] nil) ;; TODO
 
   Object
-  (toString [self] (str oset " " vc)))
+  (toString [this] (str oset " " vc)))
 
 (defmethod print-method OrderedSet [o w]
         (.write w (apply str (interpose " " (map :val (.oset o))))))
